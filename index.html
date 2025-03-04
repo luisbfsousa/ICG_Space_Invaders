@@ -32,7 +32,9 @@
             console.log("Play button clicked!");
             document.querySelector(".menu").style.display = "none"; // Hide menu
             document.getElementById("gameContainer").style.display = "block"; // Show game
-            startGame(); // Call the game function when Play is clicked
+    
+            document.body.classList.add("game-started"); // Change background
+            startGame(); // Start the game
         });
     </script>
 
