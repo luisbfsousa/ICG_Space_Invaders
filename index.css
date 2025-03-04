@@ -1,0 +1,75 @@
+body {
+    background: url('space.gif') no-repeat center center fixed;
+    background-size: cover;
+    color: yellow;
+    text-align: center;
+    font-family: 'Press Start 2P', cursive;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+
+
+.menu {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 60px; /* Increased space between elements */
+}
+
+.title {
+    font-size: 3em;
+    text-shadow: 0 0 20px yellow;
+    animation: starwars-fade 2s ease-in-out infinite alternate;
+}
+
+@keyframes starwars-fade {
+    0% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0.8; transform: scale(1.05); }
+}
+
+.play-button {
+    background-color: yellow;
+    color: black;
+    font-size: 1.5em;
+    border: none;
+    padding: 15px 30px;
+    cursor: pointer;
+    font-family: 'Press Start 2P', cursive;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    position: relative;
+    top: 80px; /* Pushes button lower */
+}
+
+.play-button:hover {
+    background-color: orange;
+}
+
+.volume-label {
+    font-size: 0.8em;
+}
+
+.volume-slider {
+    width: 150px;
+    margin-top: 50px; /* Pushes slider lower */
+}
+
+.game-container {
+    display: none; /* Hidden by default */
+    width: 400px;
+    height: 400px;
+    background-color: rgba(0, 0, 0, 0.8);
+    border: 3px solid yellow;
+    box-shadow: 0 0 20px yellow;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+
