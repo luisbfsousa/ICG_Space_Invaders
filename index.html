@@ -67,38 +67,132 @@
 
     <!-- ========================== GAME LOGIC ========================== -->
     <script>
-        let scene, camera, renderer, cube;
+        // ========================== GLOBAL VARIABLES ==========================
+        let scene, camera, renderer;
+        let ship, aliens = [];
+        let isPOVMode = false; // Track current mode
+        let overlayCanvas, overlayContext; // 2D replica for POV mode
 
         function initGame() {
-            // Setup Three.js scene
+            // ========================== SCENE SETUP ==========================
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-            camera.position.z = 5;
 
+            // Create renderer
             renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("gameCanvas") });
-            renderer.setSize(400, 400);
+            if (isPOVMode) {
+                renderer.setSize(window.innerWidth * 0.75, window.innerHeight); // 75% of screen width, full height
+            } else {
+                renderer.setSize(400, 400); // Arcade mode remains small
+            }
 
-            // Add a rotating cube
-            const geometry = new THREE.BoxGeometry();
+            // ========================== CAMERA SETUP ==========================
+            setupCameras();
+
+            // ========================== OBJECT CREATION ==========================
+            createShip();
+            createAliens();
+
+            // ========================== UI SETUP ==========================
+            setupOverlay();
+
+            // ========================== EVENT LISTENERS ==========================
+            document.addEventListener("keydown", switchGameMode);
+        }
+
+        function switchGameMode(event) {
+            // ========================== GAME MODE SWITCH (G KEY) ==========================
+            if (event.key.toLowerCase() === "g") { // Detect "G" key
+                event.preventDefault();
+                isPOVMode = !isPOVMode;
+
+                if (isPOVMode) {
+                    camera = povCamera;
+                    overlayCanvas.style.display = "block"; // Show 2D game replica
+                    console.log("Switched to POV Mode");
+                } else {
+                    camera = arcadeCamera;
+                    overlayCanvas.style.display = "none"; // Hide 2D game replica
+                    console.log("Switched to Arcade Mode");
+                }   
+            }
+        }
+
+        function setupCameras() {
+            // ========================== POV MODE (First Person) ==========================
+            povCamera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+            povCamera.position.set(0, 1, 0); // Adjust based on ship size
+
+            // ========================== ARCADE MODE (Third Person) ==========================
+            arcadeCamera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+            arcadeCamera.position.set(0, 5, 10);
+            arcadeCamera.lookAt(0, 0, 0);
+
+            // Set default camera to Arcade Mode
+            camera = arcadeCamera;
+        }
+
+        function createShip() {
+            // ========================== PLAYER SHIP ==========================
+            const geometry = new THREE.BoxGeometry(1, 1, 2); // Placeholder shape
             const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-            cube = new THREE.Mesh(geometry, material);
-            scene.add(cube);
+            ship = new THREE.Mesh(geometry, material);
+            ship.position.set(0, 0, 0);
+            scene.add(ship);
+        }
+
+        function createAliens() {
+            // ========================== ENEMY ALIENS ==========================
+            const alienGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const alienMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+
+            for (let i = 0; i < 5; i++) {
+                let alien = new THREE.Mesh(alienGeometry, alienMaterial);
+                alien.position.set(i * 2 - 4, 2, -5); // Spread out in front
+                scene.add(alien);
+                aliens.push(alien);
+            }
+        }
+
+        function setupOverlay() {
+            // ========================== 2D GAME REPLICA (POV MODE) ==========================
+            overlayCanvas = document.createElement("canvas");
+            overlayCanvas.style.position = "absolute";
+            overlayCanvas.style.top = "10px";
+            overlayCanvas.style.right = "10px"; // Align to the right
+            overlayCanvas.style.width = "20vw"; // 20% of the screen width
+            overlayCanvas.style.height = "30vh"; // 30% of the screen height
+            overlayCanvas.style.border = "2px solid white";
+            overlayCanvas.style.display = "none"; // Hidden by default
+
+            overlayContext = overlayCanvas.getContext("2d");
+            document.body.appendChild(overlayCanvas);
         }
 
         function animate() {
+            // ========================== RENDER LOOP ==========================
             requestAnimationFrame(animate);
-            cube.rotation.x += 0.01;
-            cube.rotation.y += 0.01;
             renderer.render(scene, camera);
+
+            // ========================== DRAW OVERLAY (POV MODE) ==========================
+            if (isPOVMode) {
+                drawOverlay();
+            }
+        }
+
+        function drawOverlay() {
+            overlayContext.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            overlayContext.fillStyle = "white";
+            overlayContext.fillText("2D Game Replica (Placeholder)", 10, 20);
         }
 
         function startGame() {
+            // ========================== GAME START ==========================
             if (!scene) {
                 initGame(); // Initialize the game once
             }
             animate(); // Start the game animation
         }
-    </script>    
+    </script>
 
 </body>
 </html>
