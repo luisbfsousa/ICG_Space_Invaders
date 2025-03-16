@@ -13,36 +13,64 @@
         <h1 class="title">SPACE INVADERS</h1>
         <button class="play-button" id="playButton">Play</button>
         <div class="volume-container">
-            <span class="volume-label">Volume</span>
-            <input type="range" class="volume-slider" min="0" max="100" value="50">
+            <span class="volume-label">Music Volume</span>
+            <input type="range" class="volume-slider" id="volumeControl" min="0" max="100" value="50">
         </div>
     </div>
 
-    <!-- Dedicated Game Section (Always Present) -->
     <div class="game-container" id="gameContainer">
         <canvas id="gameCanvas"></canvas>
     </div>
 
+    <audio id="backgroundMusic">
+        <source src="sounds/SpaceInvaders.mp3" type="audio/mpeg">
+    </audio>
+
     <!-- Load Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
-    <!-- Play Button Logic (Only Controls Visibility) -->
     <script>
+        let music = document.getElementById("backgroundMusic");
+        let volumeSlider = document.getElementById("volumeControl");
+
+        function startMusic() {
+            music.volume = volumeSlider.value / 100;
+            music.play().catch(error => console.error("Music playback blocked:", error));
+        }
+
+        document.addEventListener("click", startMusic, { once: true });
+        document.addEventListener("keydown", startMusic, { once: true });
+
+        volumeSlider.addEventListener("input", (event) => {
+            music.volume = event.target.value / 100;
+        });
+
+        music.loop = true;
+        music.addEventListener("ended", function () {
+            console.warn("Music ended unexpectedly. Restarting...");
+            music.currentTime = 0;
+            music.play();
+        });
+
         document.getElementById("playButton").addEventListener("click", () => {
             console.log("Play button clicked!");
-            document.querySelector(".menu").style.display = "none"; // Hide menu
-            document.getElementById("gameContainer").style.display = "block"; // Show game
-    
-            document.body.classList.add("game-started"); // Change background
-            startGame(); // Start the game
+
+            document.querySelector(".menu").style.display = "none";
+            document.getElementById("gameContainer").style.display = "block";
+            document.body.classList.add("game-started");
+
+            volumeSlider.disabled = true;
+
+            startGame();
         });
     </script>
 
-    <!-- Separate Game Logic (Not Inside the Play Button Function) -->
+    <!-- ========================== GAME LOGIC ========================== -->
     <script>
         let scene, camera, renderer, cube;
 
         function initGame() {
+            // Setup Three.js scene
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
             camera.position.z = 5;
@@ -50,7 +78,7 @@
             renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("gameCanvas") });
             renderer.setSize(400, 400);
 
-            // Add a cube
+            // Add a rotating cube
             const geometry = new THREE.BoxGeometry();
             const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
             cube = new THREE.Mesh(geometry, material);
@@ -71,5 +99,6 @@
             animate(); // Start the game animation
         }
     </script>    
+
 </body>
 </html>
