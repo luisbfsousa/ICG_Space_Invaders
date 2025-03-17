@@ -5,12 +5,13 @@
     <link rel="stylesheet" type="text/css" href="index.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="images/icon.ico" type="image/x-icon" />
-    <title>Space Invaders</title>
+    <title>Space Invaders 3D</title>
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="menu">
-        <h1 class="title">SPACE INVADERS</h1>
+        <h1 class="title">Space Invaders 3D</h1>
+        <p class="instructions">A/D to move ship, Spacebar to shoot</p>
         <button class="play-button" id="playButton">Play</button>
         <div class="volume-container">
             <span class="volume-label">Music Volume</span>
@@ -18,21 +19,16 @@
         </div>
     </div>
 
-    <div class="game-container" id="gameContainer">
-        <canvas id="gameCanvas"></canvas>
-    </div>
-
     <audio id="backgroundMusic">
         <source src="sounds/SpaceInvaders.mp3" type="audio/mpeg">
     </audio>
 
-    <!-- Load Three.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-
     <script>
         let music = document.getElementById("backgroundMusic");
         let volumeSlider = document.getElementById("volumeControl");
-
+        let playButton = document.getElementById("playButton");
+        let menu = document.querySelector(".menu");
+        
         function startMusic() {
             music.volume = volumeSlider.value / 100;
             music.play().catch(error => console.error("Music playback blocked:", error));
@@ -52,292 +48,22 @@
             music.play();
         });
 
-        document.getElementById("playButton").addEventListener("click", () => {
-            console.log("Play button clicked!");
-
-            document.querySelector(".menu").style.display = "none";
-            document.getElementById("gameContainer").style.display = "block";
-            document.body.classList.add("game-started");
-
-            volumeSlider.disabled = true;
-
-            startGame();
+        playButton.addEventListener("click", () => {
+            // Apply hyperdrive effect
+            menu.style.transition = "transform 1s ease-in-out, opacity 1s ease-in-out";
+            menu.style.transform = "scale(3) rotate(20deg)";
+            menu.style.opacity = "0";
+            
+            setTimeout(() => {
+                document.body.classList.add("game-started");
+                menu.style.display = "none";
+            }, 1000);
         });
     </script>
-    
-<!-- ========================== GAME LOGIC ========================== -->
-<script>
-    // ========================== GLOBAL VARIABLES ==========================
-    let scene, camera, renderer;
-    let ship, aliens = [];
-    let isPOVMode = false; // Track current mode
-    let overlayCanvas, overlayContext; // 2D replica for POV mode
-    let moveLeft = false, moveRight = false;
-    const shipSpeed = 0.2;
-    const gameBoundary = 5; // Limit for ship and alien positions
-    let alienDirection = 1; // 1 = right, -1 = left
-    const alienSpeed = 0.2; // Speed of horizontal movement
-    const alienMoveInterval = 500; // Time in milliseconds per move (controls movement speed)
-    let lastAlienMoveTime = 0; // Track time since last move
 
-    function initGame() {
-        // ========================== SCENE SETUP ==========================
-        scene = new THREE.Scene();
-
-        // Create renderer
-        renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("gameCanvas") });
-
-        // ========================== CAMERA SETUP ==========================
-        setupCameras();
-
-        // ========================== OBJECT CREATION ==========================
-        createShip();
-        createAliens();
-
-        // ========================== UI SETUP ==========================
-        setupOverlay();
-
-        // ========================== EVENT LISTENERS ==========================
-        document.addEventListener("keydown", handleKeyDown);
-        document.addEventListener("keyup", handleKeyUp);
-        document.addEventListener("keydown", switchGameMode);
-
-        // Start rendering
-        animate();
-    }
-
-    function switchGameMode(event) {
-        // ========================== GAME MODE SWITCH (G KEY) ==========================
-        if (event.key.toLowerCase() === "g") { // Detect "G" key
-            isPOVMode = !isPOVMode;
-
-            if (isPOVMode) {
-                camera = povCamera;
-                overlayCanvas.style.display = "block"; // Show 2D game replica
-                console.log("Switched to POV Mode");
-            } else {
-                camera = arcadeCamera;
-                overlayCanvas.style.display = "none"; // Hide 2D game replica
-                console.log("Switched to Arcade Mode");
-            }
-        }
-    }
-
-    function setupCameras() {
-        // ========================== POV MODE (First Person) ==========================
-        povCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        povCamera.position.set(0, 2, 0); // Adjust player height for better perspective
-
-        // ========================== ARCADE MODE (Third Person) ==========================
-        arcadeCamera = new THREE.PerspectiveCamera(30, 1, 0.1, 1000); // Wider FOV for better depth
-        arcadeCamera.position.set(0, 20, 20); // Adjusted higher and farther back
-        arcadeCamera.lookAt(0, 2, -5);
-
-        // Set default camera to Arcade Mode
-        camera = arcadeCamera;
-    }
-
-    function updateRendererSize() {
-        if (isPOVMode) {
-            renderer.setSize(window.innerWidth * 0.8, window.innerHeight);
-            povCamera.aspect = (window.innerWidth * 0.8) / window.innerHeight;
-            povCamera.updateProjectionMatrix();
-        } else {
-            renderer.setSize(600, 600);
-            arcadeCamera.aspect = 600 / 600; // Keep square aspect for top-down mode
-            arcadeCamera.updateProjectionMatrix();
-        }
-    }
-
-    function createShip() {
-        // ========================== PLAYER SHIP ==========================
-        const geometry = new THREE.BoxGeometry(1, 1, 2); // Placeholder shape
-        const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-        ship = new THREE.Mesh(geometry, material);
-        ship.position.set(0, 0, 0);
-        scene.add(ship);
-    }
-
-    function createAliens() {
-        // ========================== ENEMY ALIENS (5 ROWS, DIFFERENT NUMBERS & COLORS) ==========================
-        const alienColors = [0xff0000, 0xff8800, 0xff8800, 0xffff00, 0xffff00]; // Different colors per row
-        const aliensPerRow = [7, 7, 7, 7, 7]; // Varying number of aliens per row (fewer at the top, more at the bottom)
-
-        let startZ = -10; // Furthest row at the top of the game container
-
-        for (let row = 0; row < 5; row++) {
-            let numAliens = aliensPerRow[row];
-            let rowWidth = numAliens * 1.5; // Adjust spacing
-            let startX = -rowWidth / 2; // Center align rows
-
-            for (let col = 0; col < numAliens; col++) {
-                let alienGeometry = new THREE.SphereGeometry(0.5, 16, 16); // Placeholder sphere
-                let alienMaterial = new THREE.MeshBasicMaterial({ color: alienColors[row] });
-
-                let alien = new THREE.Mesh(alienGeometry, alienMaterial);
-                let xPosition = startX + col * 1.5; // Adjust horizontal placement
-                alien.position.set(xPosition, 2, startZ);
-                scene.add(alien);
-                aliens.push(alien);
-            }
-            startZ += 2; // Move each row closer to the player
-        }
-    }
-
-    function setupOverlay() {
-        // ========================== 2D GAME REPLICA (POV MODE) ==========================
-        overlayCanvas = document.createElement("canvas");
-        let size = Math.min(window.innerWidth * 0.15, window.innerHeight * 0.25); // Ensure a square shape
-        overlayCanvas.width = size;
-        overlayCanvas.height = size;
-        overlayCanvas.style.position = "absolute";
-        overlayCanvas.style.top = "1vh"; // Position towards top right
-        overlayCanvas.style.right = "1vw"; // Align to the right
-        overlayCanvas.style.border = "2px solid white";
-        overlayCanvas.style.display = "none"; // Hidden by default
-
-        overlayContext = overlayCanvas.getContext("2d");
-        document.body.appendChild(overlayCanvas);
-    }
-
-    function drawOverlay() {
-        // ========================== DRAW 2D GAME REPLICA ==========================
-        overlayContext.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-        // Draw background
-        overlayContext.fillStyle = "black";
-        overlayContext.fillRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-        // Draw player (green square)
-        let scale = overlayCanvas.width / (2 * gameBoundary);
-        let playerX = (overlayCanvas.width / 2) + (ship.position.x * scale);
-
-        overlayContext.fillStyle = "green";
-        overlayContext.fillRect(playerX - 5, overlayCanvas.height - 15, 10, 10);
-
-        // Draw enemies (5 rows with varying amounts)
-        aliens.forEach(alien => {
-            let x = (overlayCanvas.width / 2) + (alien.position.x * scale); // Scale X position
-            let y = overlayCanvas.height * 0.1 + (alien.position.z + 10) * 5; // Align top row at top
-            overlayContext.fillStyle = getAlienColor(alien);
-            overlayContext.beginPath();
-            overlayContext.arc(x, y, 5, 0, Math.PI * 2);
-            overlayContext.fill();
-        });
-    }
-
-    function getAlienColor(alien) {
-        let color = alien.material.color.getHex();
-        if (color === 0xff0000) return "red";    // Top row
-        if (color === 0xff8800) return "orange"; // Middle rows
-        if (color === 0xffff00) return "yellow"; // Closest rows
-        return "white"; // Default (shouldn't happen)
-    }  
-
-    function handleKeyDown(event) {
-        if (event.key === "a" || event.key === "ArrowLeft") {
-            moveLeft = true;
-        }
-        if (event.key === "d" || event.key === "ArrowRight") {
-            moveRight = true;
-        }
-    }
-
-    function handleKeyUp(event) {
-        if (event.key === "a" || event.key === "ArrowLeft") {
-            moveLeft = false;
-        }
-        if (event.key === "d" || event.key === "ArrowRight") {
-            moveRight = false;
-        }
-    }s
-
-    function moveShip() {
-        let screenLimit = gameBoundary; // Default limit for 3D mode
-        
-        if (isPOVMode) {
-            let scaleFactor = overlayCanvas.width / (2 * gameBoundary); // Scale based on overlay size
-            screenLimit = gameBoundary * scaleFactor;
-        } else {
-            screenLimit = gameBoundary;
-        }
-    
-        // Move ship while keeping it inside correct boundaries
-        let adjustedLimit = gameBoundary - 0.2; // Buffer to prevent clipping
-    
-        if (moveLeft && ship.position.x > -adjustedLimit) {
-            ship.position.x -= shipSpeed;
-        }
-        if (moveRight && ship.position.x < adjustedLimit) {
-            ship.position.x += shipSpeed;
-        }
-    }
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
 
-
-    function moveAliens() {
-        let currentTime = Date.now();
-        if (currentTime - lastAlienMoveTime < alienMoveInterval) return; // Limit movement speed
-
-        let hitBoundary = false;
-        let minX = Infinity, maxX = -Infinity;
-
-        // Find the front-most aliens per column
-        let frontAliens = {};
-
-        aliens.forEach(alien => {
-            let colKey = Math.round(alien.position.x * 10) / 10; // Round to avoid floating point mismatch
-            if (!frontAliens[colKey] || alien.position.z > frontAliens[colKey].position.z) {
-                frontAliens[colKey] = alien; // Store the front-most alien per column
-            }
-        });
-
-        // Move all aliens horizontally
-        aliens.forEach(alien => {
-            alien.position.x += alienSpeed * alienDirection;
-        });
-
-        // Check if any front-most alien hits the boundary
-        Object.values(frontAliens).forEach(alien => {
-            if (alien.position.x >= gameBoundary - 0.5 || alien.position.x <= -gameBoundary + 0.5) {
-                hitBoundary = true;
-            }
-        });
-
-        // If boundary is hit, move all aliens down and reverse direction
-        if (hitBoundary) {
-            aliens.forEach(alien => {
-                alien.position.z += 0.5; // Move down
-            });
-
-            alienDirection *= -1; // Reverse movement direction
-        }
-
-        lastAlienMoveTime = currentTime; // Update last movement time
-    }
-
-
-    function animate() {
-        // ========================== RENDER LOOP ==========================
-        requestAnimationFrame(animate);
-        moveShip(); // Move the ship
-        moveAliens()
-        renderer.render(scene, camera);
-
-        // Update overlay in POV mode
-        if (isPOVMode) {
-            drawOverlay();
-        }
-    }
-
-    function startGame() {
-        // ========================== GAME START ==========================
-        if (!scene) {
-            initGame(); // Initialize the game once
-        }
-        animate(); // Start the game animation
-    }
-</script>
-
+    <script src="SpaceInvaders.js"></script>
 </body>
 </html>
