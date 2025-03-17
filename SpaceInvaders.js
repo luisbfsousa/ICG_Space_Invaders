@@ -28,7 +28,7 @@ function startGame() {
     player.position.y = -3;
     scene.add(player);
 
-    const playAreaLimit = 5; // Expanded player movement area
+    const playAreaLimit = 7; // Expanded player movement area
 
     resetAliens(); // Initialize first wave of aliens
 
@@ -57,6 +57,8 @@ function startGame() {
             shootProjectile();
         }
     });
+
+    createGameBox(); // Draw visible boundaries
 
     // ========================== GAME LOOP ==========================
     function animate() {
@@ -88,11 +90,12 @@ function setCameraView() {
     if (currentLevel === 1) {
         camera.position.set(0, 0, 10); // Classic 2D View
         camera.lookAt(0, 0, 0);
+        console.log(`2D`);
     } else if (currentLevel === 2) {
         camera.position.set(0, -15, 4); // Almost Flat POV
         camera.lookAt(0, 0, 0);
+        console.log(`POV`);
     }
-    console.log(`Switched to Level ${currentLevel}`);
 }
 
 function resetAliens() {
@@ -113,4 +116,19 @@ function resetAliens() {
         }
     }
     console.log("Aliens reset for new level");
+}
+
+// ========================== GAME BOX (VISIBLE BOUNDARIES) ==========================
+function createGameBox() {
+    const boxWidth = 16;   // Adjust for horizontal limits (Ship + Alien formation)
+    const boxHeight = 12;  // Ensure all aliens fit inside
+    const boxDepth = 1;    // Flat box for 2D gameplay
+
+    const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+    const edges = new THREE.EdgesGeometry(boxGeometry);
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000}); // RED for clear visibility
+    const gameBox = new THREE.LineSegments(edges, lineMaterial);
+    
+    gameBox.position.set(0, 0, -1); // Slightly back to avoid covering player/aliens
+    scene.add(gameBox);
 }
