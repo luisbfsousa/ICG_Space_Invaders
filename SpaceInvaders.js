@@ -1,24 +1,20 @@
 document.getElementById("playButton").addEventListener("click", () => {
-    setTimeout(startGame, 1000); // Start game after menu transition
+    setTimeout(startGame, 1000);
 });
 
-let currentLevel = 1; // Track level progression (for camera view)
-let enemyPhase = 1;   // Track enemy formation phase (1 to 5)
-
+let currentLevel = 1; 
+let enemyPhase = 1; 
 let scene, camera, renderer;
 let aliens = [];
 let player;
 let projectiles = [];
 let playAreaLimit = 7;
 let playerSpeed = 0.1;
-
-// Global keys object to track pressed keys
 const keys = {};
 
 // ========================== KEYBOARD EVENT HANDLING ==========================
 document.addEventListener("keydown", (event) => {
     keys[event.key.toLowerCase()] = true;
-    // Fire projectile on spacebar press
     if (event.key === " ") {
         shootProjectile();
     }
@@ -30,17 +26,17 @@ document.addEventListener("keyup", (event) => {
 function startGame() {
     // ========================== THREE.JS SETUP ==========================
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000); // Black background
+    scene.background = new THREE.Color(0x000000);
 
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    setCameraView(); // Set initial camera view
+    setCameraView();
 
     renderer = new THREE.WebGLRenderer();
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
     // ========================== LIGHTING (For Better Visibility) ==========================
-    const light = new THREE.AmbientLight(0xffffff, 1.5); // White ambient light
+    const light = new THREE.AmbientLight(0xffffff, 1.5);
     scene.add(light);
 
     // ========================== PLAYER SETUP ==========================
@@ -50,24 +46,16 @@ function startGame() {
     player.position.y = -3;
     scene.add(player);
 
-    // Clear any existing projectiles
     projectiles = [];
 
-    resetAliens(); // Initialize first wave of aliens
-
-    createGameBox(); // Draw visible boundaries
-
+    resetAliens();
+    createGameBox(); 
     animate();
 }
 
-// Smoothly update the player's movement every frame based on key states
 function updatePlayerMovement() {
-    if (keys["a"] || keys["arrowleft"]) {
-        player.position.x = Math.max(-playAreaLimit, player.position.x - playerSpeed);
-    }
-    if (keys["d"] || keys["arrowright"]) {
-        player.position.x = Math.min(playAreaLimit, player.position.x + playerSpeed);
-    }
+    if (keys["a"] || keys["arrowleft"]) {player.position.x = Math.max(-playAreaLimit, player.position.x - playerSpeed);}
+    if (keys["d"] || keys["arrowright"]) {player.position.x = Math.min(playAreaLimit, player.position.x + playerSpeed);}
 }
 
 // ========================== PROJECTILE SETUP ==========================
@@ -85,11 +73,8 @@ function shootProjectile() {
 // ========================== GAME LOOP ==========================
 function animate() {
     requestAnimationFrame(animate);
-
-    // Update player's movement
     updatePlayerMovement();
 
-    // Move projectiles and remove if out of play area
     for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
         const projectile = projectiles[pIndex];
         projectile.position.y += 0.1;
@@ -99,7 +84,6 @@ function animate() {
         }
     }
 
-    // Collision detection (loop backwards)
     for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
         const projectile = projectiles[pIndex];
         for (let aIndex = aliens.length - 1; aIndex >= 0; aIndex--) {
@@ -107,7 +91,7 @@ function animate() {
             const dx = projectile.position.x - alien.position.x;
             const dy = projectile.position.y - alien.position.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
-            const collisionThreshold = 0.4; // Adjust as needed
+            const collisionThreshold = 0.4;
             if (distance < collisionThreshold) {
                 scene.remove(alien);
                 scene.remove(projectile);
@@ -125,17 +109,13 @@ function animate() {
 // ========================== LEVEL PROGRESSION ==========================
 function checkLevelCompletion() {
     if (aliens.length === 0) {
-        // Clear any remaining projectiles
         projectiles.forEach(proj => scene.remove(proj));
         projectiles.length = 0;
 
-        // Update level for camera view (if needed)
-        currentLevel = (currentLevel % 2) + 1; // Cycle between levels: 1 and 2
+        currentLevel = (currentLevel % 2) + 1;
 
-        // Advance enemy formation phase if not already at phase 5
-        if (enemyPhase < 5) {
-            enemyPhase++;
-        }
+        if (enemyPhase < 5) {enemyPhase++;}
+
         setCameraView();
         resetAliens();
     }
@@ -144,11 +124,11 @@ function checkLevelCompletion() {
 function setCameraView() {
     if (!camera) return;
     if (currentLevel === 1) {
-        camera.position.set(0, 0, 10); // Classic 2D View
+        camera.position.set(0, 0, 10); //classico
         camera.lookAt(0, 0, 0);
         console.log("2D");
     } else if (currentLevel === 2) {
-        camera.position.set(0, -15, 3); // Almost Flat POV
+        camera.position.set(0, -15, 3); //quase POV
         camera.lookAt(0, 0, 0);
         console.log("POV");
     }
@@ -156,22 +136,15 @@ function setCameraView() {
 
 function resetAliens() {
     if (!scene) return;
-    // Remove existing aliens
     aliens.forEach(alien => scene.remove(alien));
     aliens.length = 0;
     
     let rows, cols;
-    if (enemyPhase === 1) {
-        rows = 2; cols = 3;
-    } else if (enemyPhase === 2) {
-        rows = 3; cols = 3;
-    } else if (enemyPhase === 3) {
-        rows = 4; cols = 4;
-    } else if (enemyPhase === 4) {
-        rows = 4; cols = 8;
-    } else {
-        rows = 5; cols = 8;
-    }
+    if (enemyPhase === 1) {rows = 2; cols = 3;} 
+    else if (enemyPhase === 2) {rows = 3; cols = 3;} 
+    else if (enemyPhase === 3) {rows = 4; cols = 4;} 
+    else if (enemyPhase === 4) {rows = 4; cols = 8;} 
+    else {rows = 5; cols = 8;}
     
     const alienSpacing = 1.5;
     for (let r = 0; r < rows; r++) {
@@ -184,20 +157,20 @@ function resetAliens() {
             aliens.push(alien);
         }
     }
-    console.log("Aliens reset for phase " + enemyPhase);
+    //console.log("Reset aliens " + enemyPhase);
 }
 
 // ========================== GAME BOX (VISIBLE BOUNDARIES) ==========================
 function createGameBox() {
-    const boxWidth = 16;   // Adjust for horizontal limits (Ship + Alien formation)
-    const boxHeight = 12;  // Ensure all aliens fit inside
-    const boxDepth = 1;    // Flat box for 2D gameplay
+    const boxWidth = 16; 
+    const boxHeight = 12;  
+    const boxDepth = 1;   
 
     const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
     const edges = new THREE.EdgesGeometry(boxGeometry);
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 }); // RED for clear visibility
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 }); 
     const gameBox = new THREE.LineSegments(edges, lineMaterial);
     
-    gameBox.position.set(0, 0, -1); // Slightly back to avoid covering player/aliens
+    gameBox.position.set(0, 0, -1); 
     scene.add(gameBox);
 }
