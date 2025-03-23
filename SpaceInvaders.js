@@ -12,6 +12,35 @@ let playAreaLimit = 7;
 let playerSpeed = 0.1;
 const keys = {};
 
+// Global variables for discrete alien movement
+let alienDirection = 1;     // 1 means moving right, -1 means left
+let lastAlienMoveTime = Date.now();
+const alienMoveDelay = 1000;  // milliseconds between moves
+const horizontalStep = 2;     // horizontal step per move
+const verticalStep = 2;       // vertical step when boundary hit
+
+// Global game scoring and lives
+let points = 0;
+let playerLives = 3;
+let gameOver = false;
+
+// Create a scoreboard element at the top right of the page
+const scoreBoard = document.createElement("div");
+scoreBoard.id = "scoreBoard";
+scoreBoard.style.position = "absolute";
+scoreBoard.style.top = "10px";
+scoreBoard.style.right = "10px";
+scoreBoard.style.color = "#fff";
+scoreBoard.style.fontFamily = "Arial, sans-serif";
+scoreBoard.style.fontSize = "16px";
+scoreBoard.style.zIndex = "100";
+document.body.appendChild(scoreBoard);
+updateScoreBoard();
+
+function updateScoreBoard() {
+    scoreBoard.textContent = `Points: ${points}    Lives: ${playerLives}`;
+}
+
 // ========================== KEYBOARD EVENT HANDLING ==========================
 document.addEventListener("keydown", (event) => {
     keys[event.key.toLowerCase()] = true;
@@ -24,6 +53,12 @@ document.addEventListener("keyup", (event) => {
 });
 
 function startGame() {
+    // Reset game variables
+    points = 0;
+    playerLives = 3;
+    gameOver = false;
+    updateScoreBoard();
+    
     // ========================== THREE.JS SETUP ==========================
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
@@ -35,7 +70,7 @@ function startGame() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // ========================== LIGHTING (For Better Visibility) ==========================
+    // ========================== LIGHTING ==========================
     const light = new THREE.AmbientLight(0xffffff, 1.5);
     scene.add(light);
 
@@ -47,21 +82,24 @@ function startGame() {
     scene.add(player);
 
     projectiles = [];
-
     resetAliens();
-    createGameBox(); 
+    createGameBox();
     animate();
 }
 
 function updatePlayerMovement() {
-    if (keys["a"] || keys["arrowleft"]) {player.position.x = Math.max(-playAreaLimit, player.position.x - playerSpeed);}
-    if (keys["d"] || keys["arrowright"]) {player.position.x = Math.min(playAreaLimit, player.position.x + playerSpeed);}
+    if (keys["a"] || keys["arrowleft"]) {
+        player.position.x = Math.max(-playAreaLimit, player.position.x - playerSpeed);
+    }
+    if (keys["d"] || keys["arrowright"]) {
+        player.position.x = Math.min(playAreaLimit, player.position.x + playerSpeed);
+    }
 }
 
 // ========================== PROJECTILE SETUP ==========================
 const maxProjectiles = 3;
 function shootProjectile() {
-    if (projectiles.length >= maxProjectiles) return; // Limit to 3 bullets at a time
+    if (projectiles.length >= maxProjectiles) return;
     const projectileGeometry = new THREE.ConeGeometry(0.1, 0.5, 4);
     const projectileMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
     const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
@@ -70,11 +108,63 @@ function shootProjectile() {
     projectiles.push(projectile);
 }
 
+// ========================== ALIEN MOVEMENT (DISCRETE STEPS) ==========================
+function updateAliens() {
+    const now = Date.now();
+    if (now - lastAlienMoveTime < alienMoveDelay) return; // Wait until delay passes
+    lastAlienMoveTime = now;
+
+    const leftBoundary = -7;
+    const rightBoundary = 7;
+    let hitBoundary = false;
+    aliens.forEach(alien => {
+        if ((alien.position.x + horizontalStep * alienDirection) < leftBoundary ||
+            (alien.position.x + horizontalStep * alienDirection) > rightBoundary) {
+            hitBoundary = true;
+        }
+    });
+    if (hitBoundary) {
+        aliens.forEach(alien => {
+            alien.position.y -= verticalStep;
+        });
+        alienDirection *= -1;
+    } else {
+        aliens.forEach(alien => {
+            alien.position.x += horizontalStep * alienDirection;
+        });
+    }
+}
+
+function checkPlayerCollision() {
+    // Use bounding box approximation:
+    // Player: width 1 (half-width 0.5), height 0.5 (half-height 0.25)
+    // Alien: sphere radius ~0.3
+    for (let i = 0; i < aliens.length; i++) {
+        const alien = aliens[i];
+        const xDist = Math.abs(alien.position.x - player.position.x);
+        const yDist = Math.abs(alien.position.y - player.position.y);
+        if (xDist < (0.5 + 0.3) && yDist < (0.25 + 0.3)) {
+            console.log("Player hit!");
+            playerLives--;
+            updateScoreBoard();
+            if (playerLives <= 0) {
+                console.log("Game Over!");
+                gameOver = true;
+            }
+            // Optionally, add a brief cooldown here
+            break;
+        }
+    }
+}
+
 // ========================== GAME LOOP ==========================
 function animate() {
+    if (gameOver) return; // Stop the game loop if game over
+
     requestAnimationFrame(animate);
     updatePlayerMovement();
 
+    // Update projectiles and remove those out of bounds
     for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
         const projectile = projectiles[pIndex];
         projectile.position.y += 0.1;
@@ -84,6 +174,7 @@ function animate() {
         }
     }
 
+    // Collision detection between projectiles and aliens (iterate backwards)
     for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
         const projectile = projectiles[pIndex];
         for (let aIndex = aliens.length - 1; aIndex >= 0; aIndex--) {
@@ -97,11 +188,15 @@ function animate() {
                 scene.remove(projectile);
                 aliens.splice(aIndex, 1);
                 projectiles.splice(pIndex, 1);
+                points += 10;  // 10 points per kill
+                updateScoreBoard();
                 break;
             }
         }
     }
 
+    updateAliens();
+    checkPlayerCollision();
     checkLevelCompletion();
     renderer.render(scene, camera);
 }
@@ -109,13 +204,16 @@ function animate() {
 // ========================== LEVEL PROGRESSION ==========================
 function checkLevelCompletion() {
     if (aliens.length === 0) {
+        // Award bonus points for level completion
+        points += 50;
+        updateScoreBoard();
+        
+        // Remove any remaining projectiles
         projectiles.forEach(proj => scene.remove(proj));
         projectiles.length = 0;
-
+        
         currentLevel = (currentLevel % 2) + 1;
-
-        if (enemyPhase < 5) {enemyPhase++;}
-
+        if (enemyPhase < 5) { enemyPhase++; }
         setCameraView();
         resetAliens();
     }
@@ -124,11 +222,11 @@ function checkLevelCompletion() {
 function setCameraView() {
     if (!camera) return;
     if (currentLevel === 1) {
-        camera.position.set(0, 0, 10); //classico
+        camera.position.set(0, 0, 10); // Classic 2D View
         camera.lookAt(0, 0, 0);
         console.log("2D");
     } else if (currentLevel === 2) {
-        camera.position.set(0, -15, 3); //quase POV
+        camera.position.set(0, -15, 3); // Almost Flat POV
         camera.lookAt(0, 0, 0);
         console.log("POV");
     }
@@ -140,37 +238,39 @@ function resetAliens() {
     aliens.length = 0;
     
     let rows, cols;
-    if (enemyPhase === 1) {rows = 2; cols = 3;} 
-    else if (enemyPhase === 2) {rows = 3; cols = 3;} 
-    else if (enemyPhase === 3) {rows = 4; cols = 4;} 
-    else if (enemyPhase === 4) {rows = 4; cols = 8;} 
-    else {rows = 5; cols = 8;}
+    if (enemyPhase === 1) { rows = 2; cols = 3; } 
+    else if (enemyPhase === 2) { rows = 3; cols = 3; } 
+    else if (enemyPhase === 3) { rows = 4; cols = 4; } 
+    else if (enemyPhase === 4) { rows = 4; cols = 8; } 
+    else { rows = 5; cols = 8; }
     
+    // Increase vertical offset for more space between aliens and the ship
+    const baseYOffset = 4;
     const alienSpacing = 1.5;
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
             const alienGeometry = new THREE.SphereGeometry(0.3, 16, 16);
             const alienMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
             const alien = new THREE.Mesh(alienGeometry, alienMaterial);
-            alien.position.set((c - cols / 2) * alienSpacing, (r - rows / 2) * alienSpacing + 2, 0);
+            alien.position.set((c - cols / 2) * alienSpacing, (r - rows / 2) * alienSpacing + baseYOffset, 0);
             scene.add(alien);
             aliens.push(alien);
         }
     }
-    //console.log("Reset aliens " + enemyPhase);
+    console.log("Aliens reset for phase " + enemyPhase);
 }
 
 // ========================== GAME BOX (VISIBLE BOUNDARIES) ==========================
 function createGameBox() {
-    const boxWidth = 16; 
-    const boxHeight = 12;  
-    const boxDepth = 1;   
+    const boxWidth = 16;
+    const boxHeight = 12;
+    const boxDepth = 1;
 
     const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
     const edges = new THREE.EdgesGeometry(boxGeometry);
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 }); 
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
     const gameBox = new THREE.LineSegments(edges, lineMaterial);
     
-    gameBox.position.set(0, 0, -1); 
+    gameBox.position.set(0, 0, -1);
     scene.add(gameBox);
 }
