@@ -19,6 +19,24 @@
         </div>
     </div>
 
+    <div id="gameOverOverlay" class="game-over-overlay hidden">
+        <div class="game-over-popup">
+            <h1 class="game-over-title">Game Over</h1>
+            <div class="game-over-input-container">
+                <div id="gameOverInput" class="game-over-input" contenteditable="true" tabindex="0"></div>
+                <span id="gameOverCaret" class="blinking game-over-caret">_</span>
+            </div>
+            <button id="gameOverSubmit" class="game-over-button">Submit</button>
+        </div>
+    </div>
+
+    <div id="scoreBoard" class="score-board hidden"></div>
+
+    <div id="leaderboard" class="leaderboard hidden">
+        <h2 class="leaderboard-title">Leaderboard</h2>
+        <div id="leaderboardContent" class="leaderboard-content"></div>
+      </div>
+
     <audio id="backgroundMusic">
         <source src="sounds/SpaceInvaders.mp3" type="audio/mpeg">
     </audio>
