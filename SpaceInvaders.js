@@ -150,12 +150,141 @@ function checkPlayerCollision() {
             if (playerLives <= 0) {
                 console.log("Game Over!");
                 gameOver = true;
+                displayGameOverPopup();
             }
             // Optionally, add a brief cooldown here
             break;
         }
     }
 }
+
+// ========================== GAME OVER POPUP ==========================
+function displayGameOverPopup() {
+    // Create overlay
+    const overlay = document.createElement("div");
+    overlay.id = "gameOverOverlay";
+    overlay.style.position = "absolute";
+    overlay.style.top = "0";
+    overlay.style.left = "0";
+    overlay.style.width = "100%";
+    overlay.style.height = "100%";
+    overlay.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
+    overlay.style.display = "flex";
+    overlay.style.flexDirection = "column";
+    overlay.style.justifyContent = "center";
+    overlay.style.alignItems = "center";
+    overlay.style.zIndex = "200";
+    
+    // Create title text
+    const title = document.createElement("div");
+    title.textContent = "Game Over";
+    title.style.fontFamily = "'Press Start 2P', cursive";
+    title.style.fontSize = "48px";
+    title.style.color = "yellow";
+    title.style.marginBottom = "30px";
+    overlay.appendChild(title);
+    
+    // Container for typed text (contenteditable) + underscore
+    const textContainer = document.createElement("div");
+    textContainer.style.marginBottom = "30px"; // space before button
+
+    // Contenteditable div for user’s text
+    const inputContainer = document.createElement("div");
+    inputContainer.style.display = "inline-block";
+    inputContainer.style.whiteSpace = "nowrap";
+    inputContainer.style.color = "yellow";
+    inputContainer.style.fontFamily = "'Press Start 2P', cursive";
+    inputContainer.style.fontSize = "24px";
+    inputContainer.style.outline = "none";
+    inputContainer.contentEditable = "true";  // Make it editable
+    inputContainer.setAttribute("tabindex", "0"); // Make it focusable
+    // Remove box/border, hide normal caret, disable spellcheck
+    inputContainer.style.border = "none";
+    inputContainer.style.background = "none";
+    inputContainer.style.caretColor = "transparent";
+    inputContainer.spellcheck = false;
+    
+    // Enforce max 8 characters
+    inputContainer.addEventListener("input", () => {
+      if (inputContainer.innerText.length > 8) {
+        // Truncate to 8
+        inputContainer.innerText = inputContainer.innerText.substring(0, 8);
+        // Place cursor at end if needed (though we are hiding the caret anyway)
+        placeCaretAtEnd(inputContainer);
+      }
+    });
+
+    // Optional helper to place caret at end
+    function placeCaretAtEnd(el) {
+      el.focus();
+      if (typeof window.getSelection != "undefined" 
+          && typeof document.createRange != "undefined") {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }
+
+    // Blinking underscore
+    const underscore = document.createElement("span");
+    underscore.textContent = "_";
+    underscore.style.fontFamily = "'Press Start 2P', cursive";
+    underscore.style.fontSize = "24px";
+    underscore.style.color = "yellow";
+    underscore.style.marginLeft = "8px"; // space between text and underscore
+
+    // Basic blink animation
+    const styleTag = document.createElement("style");
+    styleTag.type = "text/css";
+    styleTag.innerHTML = `
+        @keyframes blink {
+            0%   { opacity: 1; }
+            50%  { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        .blinking {
+            animation: blink 1s infinite;
+        }
+    `;
+    document.head.appendChild(styleTag);
+
+    underscore.classList.add("blinking");
+
+    // Append the contenteditable and underscore into textContainer
+    textContainer.appendChild(inputContainer);
+    textContainer.appendChild(underscore);
+    overlay.appendChild(textContainer);
+    
+    // Create arcade-style submit button
+    const button = document.createElement("button");
+    button.textContent = "Submit";
+    button.style.fontFamily = "'Press Start 2P', cursive";
+    button.style.fontSize = "24px";
+    button.style.padding = "10px 20px";
+    button.style.cursor = "pointer";
+    button.style.background = "yellow";
+    button.style.color = "black";
+    button.style.border = "none";
+    button.style.boxShadow = "0 0 10px yellow";
+    overlay.appendChild(button);
+    
+    document.body.appendChild(overlay);
+
+    // Focus the contenteditable div so you can type right away
+    inputContainer.focus();
+    
+    button.addEventListener("click", () => {
+        // Retrieve typed text from the contenteditable div
+        const playerName = inputContainer.innerText.trim();
+        console.log("Player Name:", playerName);
+        // You can save the player's name or display high scores here.
+        location.reload();
+    });
+}
+
 
 // ========================== GAME LOOP ==========================
 function animate() {
