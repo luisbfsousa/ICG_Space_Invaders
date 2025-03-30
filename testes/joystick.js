@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'GLTFLoader';
 
 let joystickMoving, base, sphere, cylinder, button;
 let isDragging = false;        // For joystick movement (right mouse)
@@ -64,11 +65,30 @@ function init() {
   sphere.position.set(0, 80, 0);
   joystickMoving.add(sphere);
 
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setClearColor(new THREE.Color(0x000000));
+  const heartShape = new THREE.Shape();
+  heartShape.moveTo(25, 25);
+  heartShape.bezierCurveTo(25, 25, 20, 0, 0, 0);
+  heartShape.bezierCurveTo(-30, 0, -30, 35, -30, 35);
+  heartShape.bezierCurveTo(-30, 55, -10, 77, 25, 95);
+  heartShape.bezierCurveTo(60, 77, 80, 55, 80, 35);
+  heartShape.bezierCurveTo(80, 35, 80, 0, 50, 0);
+  heartShape.bezierCurveTo(35, 0, 25, 25, 25, 25);
+
+  const heartgeometry = new THREE.ShapeGeometry(heartShape);
+  const heartmaterial = new THREE.MeshBasicMaterial({ color: 0x4d0000 });
+  const heart = new THREE.Mesh(heartgeometry, heartmaterial);
+  scene.add(heart);
+  heart.position.set(0, 30, -250);
+  heart.rotation.z = Math.PI;
+  heart.rotation.y = 1;
+  
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setClearColor(new THREE.Color(0x000000), 0);
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
+
 
   // Prevent default context menu to allow right-click usage
   window.addEventListener('contextmenu', e => e.preventDefault(), false);
@@ -79,6 +99,42 @@ function init() {
   window.addEventListener('mouseup', onMouseUp, false);
 
   animate();
+
+  const loader = new GLTFLoader();
+
+  loader.load('../models/pink_invader.glb', (gltf) => {
+    console.log('GLTF loaded:', gltf);
+    const model = gltf.scene;
+    model.position.set(0, 115, 10);
+    model.rotation.y = Math.PI/2.5;
+    model.scale.set(2, 2, 2);
+    scene.add(model);
+  }, undefined, (error) => {
+    console.error(error);
+  });
+
+  loader.load('../models/arcade.glb', (gltf) => {
+    console.log('GLTF loaded:', gltf);
+    const model1 = gltf.scene;
+    model1.position.set(-50, 0, 200);
+    model1.rotation.y = 2.5;
+    model1.scale.set(15,15,15);
+    scene.add(model1);
+  }, undefined, (error) => {
+    console.error(error);
+  });
+
+  loader.load('../models/spaceship.glb', (gltf) => {
+    console.log('GLTF loaded:', gltf);
+    const model1 = gltf.scene;
+    model1.position.set(10, 0, 250);
+    model1.rotation.y = 2.5;
+    model1.scale.set(0.1,0.1,0.1);
+    scene.add(model1);
+  }, undefined, (error) => {
+    console.error(error);
+  });
+
 }
 
 // --- MOVEMENT SECTION START ---
@@ -153,8 +209,26 @@ function animate() {
     joystickMoving.rotation.x += (0 - joystickMoving.rotation.x) * 0.1;
     joystickMoving.rotation.z += (0 - joystickMoving.rotation.z) * 0.1;
   }
-
+  // Render your joystick scene
   renderer.render(scene, camera);
+
+  // NEW: Update the background's joystick uniform (if background is ready)
+  if (window.bgController) {
+    // 1) Get sphere’s position in world space
+    const worldPos = new THREE.Vector3();
+    sphere.getWorldPosition(worldPos);
+
+    // 2) Project it into NDC
+    worldPos.project(camera); 
+    // Now worldPos.x and worldPos.y are in [-1..1]
+
+    // 3) Convert to [0..1]
+    const x = (worldPos.x + 1) / 2;
+    const y = (1 - worldPos.y) / 2; // or 1 - ((worldPos.y + 1)/2)
+
+    // 4) Pass that to background.js
+    window.bgController.updateJoystick(new THREE.Vector2(x, y));
+  }
 }
 // --- MOVEMENT SECTION END ---
 

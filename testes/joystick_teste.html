@@ -27,14 +27,23 @@
     <script type="importmap">
         {
             "imports": {
-                  "three": "https://threejs.org/build/three.module.js"
+                  "three": "https://threejs.org/build/three.module.js",
+                  "GLTFLoader": "https://threejs.org/examples/jsm/loaders/GLTFLoader.js"
             }
           }
     </script>
 
-    <script ></script>
-    <script type="module" src="joystick.js"></script>
-    
+    <script type="module">
+        import { renderCustomShader } from './background.js';
+      
+        // Start the background shader and store the controller globally
+        (async () => {
+          window.bgController = await renderCustomShader();
+        })();
+      </script>
+      
+      <script type="module" src="joystick.js"></script>
+      
 
 
 </body>

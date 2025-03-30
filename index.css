@@ -1,3 +1,6 @@
+/* ---------------------------------
+   BODY / MENU / BUTTONS
+---------------------------------- */
 body {
     background: url('images/space.gif') no-repeat center center fixed;
     background-size: cover;
@@ -11,25 +14,32 @@ body {
     margin: 0;
 }
 
-
+html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+}
+  
 .menu {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 60px; /* Increased space between elements */
+    gap: 60px;
 }
-
+  
 .title {
     font-size: 3em;
     text-shadow: 0 0 20px yellow;
     animation: starwars-fade 2s ease-in-out infinite alternate;
 }
-
+  
 @keyframes starwars-fade {
     0% { opacity: 1; transform: scale(1); }
     100% { opacity: 0.8; transform: scale(1.05); }
 }
-
+  
 .play-button {
     background-color: yellow;
     color: black;
@@ -43,24 +53,24 @@ body {
     align-items: center;
     gap: 10px;
     position: relative;
-    top: 80px; /* Pushes button lower */
+    top: 80px;
 }
-
+  
 .play-button:hover {
     background-color: orange;
 }
-
+  
 .volume-label {
     font-size: 0.8em;
 }
-
+  
 .volume-slider {
     width: 150px;
-    margin-top: 50px; /* Pushes slider lower */
+    margin-top: 50px;
 }
-
+  
 .game-container {
-    display: none; /* Hidden by default */
+    display: none;
     width: 400px;
     height: 400px;
     background-color: rgba(0, 0, 0, 0.8);
@@ -71,12 +81,14 @@ body {
     left: 50%;
     transform: translate(-50%, -50%);
 }
-
+  
 body.game-started {
-    background: black !important; /* Remove the GIF and set a black background */
+    background: black !important;
 }
-
-/* Game Over Popup Styles */
+  
+  /* ---------------------------------
+     GAME OVER POPUP
+  ---------------------------------- */
 .game-over-overlay {
     position: absolute;
     top: 0;
@@ -94,18 +106,18 @@ body.game-started {
 .game-over-popup {
     text-align: center;
 }
-
+  
 .game-over-title {
     font-family: 'Press Start 2P', cursive;
     font-size: 48px;
     color: yellow;
     margin-bottom: 30px;
 }
-
+  
 .game-over-input-container {
     margin-bottom: 30px;
 }
-
+  
 .game-over-input {
     display: inline-block;
     font-family: 'Press Start 2P', cursive;
@@ -114,26 +126,26 @@ body.game-started {
     outline: none;
     border: none;
     background: none;
-    caret-color: transparent; /* Hides the native caret */
+    caret-color: transparent;
 }
-
+  
 .game-over-caret {
-    margin-left: -15px; 
+    margin-left: -15px;
     font-family: 'Press Start 2P', cursive;
     font-size: 24px;
     color: yellow;
 }
-
-/* Blink animation for the underscore */
+  
 @keyframes blink {
-    0%   { opacity: 1; }
-    50%  { opacity: 0; }
+    0% { opacity: 1; }
+    50% { opacity: 0; }
     100% { opacity: 1; }
 }
+  
 .blinking {
     animation: blink 1s infinite;
 }
-
+  
 .game-over-button {
     font-family: 'Press Start 2P', cursive;
     font-size: 24px;
@@ -144,82 +156,99 @@ body.game-started {
     border: none;
     box-shadow: 0 0 10px yellow;
 }
-
-/* Hide popup initially */
+  
+  /* ---------------------------------
+     UTILITY CLASS
+  ---------------------------------- */
 .hidden {
     display: none;
-}
-
-.score-board {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    color: yellow;
-    font-family: 'Press Start 2P', cursive;
-    font-size: 16px;
-    z-index: 100;
-    text-align: right;
-    line-height: 1.5;  /* Adjusts the spacing between lines */
-    padding: 10px;     /* Extra spacing if needed */
 }
   
-  /* A utility class to hide elements */
-.hidden {
-    display: none;
-}
-
+  /* =======================
+     LEADERBOARD (top-right)
+  ======================= */
 .leaderboard {
     position: absolute;
-    top: 10px;
-    left: 10px;
-    color: white;
+    top: -10px;
+    right: 10px;
+    width: 200px;               /* adjust as needed */
+    background-color: #000;     /* black box */
+    border: 2px solid #fff;     /* white border */
+    border-radius: 5px;
+    color: #fff;
     font-family: 'Press Start 2P', cursive;
     font-size: 14px;
-    z-index: 101;
-    text-align: left; /* We'll left-align each column */
+    text-shadow: 0 0 2px currentColor;
+    padding: 10px;
+    pointer-events: none;
+    z-index: 100;
 }
-
+  
 .leaderboard-title {
     font-size: 16px;
     margin-bottom: 10px;
     text-align: center;
 }
-
+  
 .leaderboard-content {
     display: flex;
     flex-direction: column;
 }
-
-/* Each row is a flex container with 3 columns */
+  
 .leaderboard-row {
     display: flex;
     margin-bottom: 5px;
 }
-
-/* The columns */
+  
 .leaderboard-pos,
 .leaderboard-name,
 .leaderboard-score {
     display: inline-block;
-    /* tweak these widths to your liking */
     width: 50px;
-    /*overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;*/
 }
-
-/* You can also set different widths per column, e.g. name might be wider */
+  
 .leaderboard-name {
-    width: 80px; /* example: make name column wider */
+    width: 80px;
+    text-transform: uppercase;
 }
-
-/* Color for rank label (1ST, 2ND, etc.) can be overridden in JS if you like */
+  
 .leaderboard-pos {
     color: red;
 }
-
-/* Score aligned to the right */
+  
 .leaderboard-score {
     text-align: left;
-    display: inline-block;
-}  
+}
+  
+  /* =====================
+     SCOREBOARD (bottom-right)
+  ======================= */
+.score-board {
+    position: absolute;
+    bottom: -10px;
+    right: 10px;
+    width: 170px;
+    background-color: #000;
+    border: 2px solid #fff;
+    border-radius: 5px;
+    color: #fff;
+    font-family: 'Press Start 2P', cursive;
+    font-size: 18px;
+    text-shadow: 0 0 2px #fff;
+    padding: 20px 25px 20px; /* Increased padding-bottom to 20px */
+    pointer-events: none;
+    z-index: 100;
+    font-size: 14px;
+}
+  
+  /* ---------------------------------
+     LIVES (near the ship in 3D)
+  ---------------------------------- */
+.lives-container {
+    position: absolute;
+    color: yellow;
+    font-family: 'Press Start 2P', cursive;
+    font-size: 16px;
+    z-index: 110;
+    pointer-events: none;
+} 

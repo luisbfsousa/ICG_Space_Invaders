@@ -24,6 +24,12 @@ let points = 0;
 let playerLives = 3;
 let gameOver = false;
 
+async function loadShader(url) {
+  const response = await fetch(url);
+  return response.text();
+}
+
+// ------------------- Leaderboard Setup -------------------
 // Prefill the leaderboard with sample data for testing
 function prefillLeaderboard() {
   const existing = getLeaderboardData();
@@ -34,24 +40,17 @@ function prefillLeaderboard() {
   const initialData = [
     { name: "%app%", score: 10000 },
     { name: "Teste",  score: 90 },
-    { name: "AHHHH", score: 70 },
-    { name: "Quart",   score: 60 },
-    { name: "Quint",   score: 55 },
-    { name: "Sexto",    score: 50 },
+    { name: "AHHHH",  score: 70 },
+    { name: "Quart",  score: 60 },
+    { name: "Quint",  score: 55 },
+    { name: "Sexto",  score: 50 },
     { name: "Seti",   score: 40 },
-    { name: "Oitav",   score: 30 },
-    { name: "Non",     score: 25 },
+    { name: "Oitav",  score: 30 },
+    { name: "Non",    score: 25 },
   ];
   saveLeaderboardData(initialData);
 }
 
-// ========================== SCOREBOARD ==========================
-function updateScoreBoard() {
-  const scoreBoard = document.getElementById("scoreBoard");
-  scoreBoard.innerHTML = `Points<br>&nbsp;&nbsp;${points}<br><br>Lifes<br>&nbsp;&nbsp;${playerLives}`;
-}
-
-// ========================== LEADERBOARD STORAGE ==========================
 function getLeaderboardData() {
   const stored = localStorage.getItem('leaderboard');
   return stored ? JSON.parse(stored) : [];
@@ -100,16 +99,10 @@ function updateLeaderboard() {
     const nameDiv = document.createElement("div");
     nameDiv.classList.add("leaderboard-name");
     nameDiv.textContent = entry.name;
-    // Apply special colors for the top three
-    if (rank === 1) {
-      nameDiv.style.color = "blue";
-    } else if (rank === 2) {
-      nameDiv.style.color = "orange";
-    } else if (rank === 3) {
-      nameDiv.style.color = "green";
-    } else {
-      nameDiv.style.color = "yellow";
-    }
+    if (rank === 1){ nameDiv.style.color = "blue"; } 
+    else if (rank === 2){ nameDiv.style.color = "orange"; } 
+    else if (rank === 3){ nameDiv.style.color = "green"; } 
+    else { nameDiv.style.color = "yellow"; }
     row.appendChild(nameDiv);
 
     // SCORE column
@@ -122,40 +115,87 @@ function updateLeaderboard() {
   });
 }
 
-// ========================== KEYBOARD EVENT HANDLING ==========================
+// ------------------- Score Board & Lives Display -------------------
+function updateScoreBoard() {
+  const scoreBoard = document.getElementById("scoreBoard");
+  scoreBoard.innerHTML = `Score : ${points}`;
+}
+
+// NEW: separate function to update the "lives" container
+function updateLivesDisplay() {
+  const livesEl = document.getElementById("livesContainer");
+  livesEl.innerHTML = `Lifes: ${playerLives}`;
+}
+
+// ------------------- 3D to 2D Projection Helper -------------------
+function toScreenPosition(obj, camera) {
+  const vector = new THREE.Vector3();
+  const widthHalf = window.innerWidth / 2;
+  const heightHalf = window.innerHeight / 2;
+
+  vector.copy(obj.position);
+  vector.project(camera);
+
+  vector.x = (vector.x * widthHalf) + widthHalf;
+  vector.y = -(vector.y * heightHalf) + heightHalf;
+
+  return { x: vector.x, y: vector.y };
+}
+
+// We'll call this in the render loop to position .lives-container
+function updateLivesPosition() {
+  const livesEl = document.getElementById('livesContainer');
+  // Get the canvas's actual position and size
+  const canvasRect = renderer.domElement.getBoundingClientRect();
+  
+  const vector = new THREE.Vector3();
+  vector.copy(player.position);
+  vector.project(camera);
+
+  // Convert normalized device coordinates to canvas pixel coordinates
+  const x = (vector.x + 1) / 2 * canvasRect.width + canvasRect.left;
+  const y = (-vector.y + 1) / 2 * canvasRect.height + canvasRect.top;
+  
+  // Offsets so the lives display is positioned next to the ship
+  const offsetX = 30;
+  const offsetY = -10;
+  
+  livesEl.style.left = (x + offsetX) + 'px';
+  livesEl.style.top = (y + offsetY) + 'px';
+}
+
+
+// ------------------- Keyboard Handling -------------------
 document.addEventListener("keydown", (event) => {
   keys[event.key.toLowerCase()] = true;
   if (event.key === " ") {
     shootProjectile();
   }
 });
+
 document.addEventListener("keyup", (event) => {
   keys[event.key.toLowerCase()] = false;
 });
 
-// ========================== GAME START ==========================
-function startGame() {
+// ------------------- Game Initialization -------------------
+async function startGame() {
   // Reset game variables
   points = 0;
   playerLives = 3;
   gameOver = false;
   updateScoreBoard();
 
-  // Show scoreboard & leaderboard
-  const scoreBoard = document.getElementById("scoreBoard");
-  scoreBoard.classList.remove("hidden");
-  const leaderboard = document.getElementById("leaderboard");
-  leaderboard.classList.remove("hidden");
-  updateLeaderboard();
-  
-  // THREE.JS SETUP
+  const livesEl = document.getElementById("livesContainer");
+  livesEl.classList.remove("hidden");
+  updateLivesDisplay();
+
+  // THREE.JS SETUP (Main Game Scene)
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x000000);
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   setCameraView();
 
-  renderer = new THREE.WebGLRenderer();
+  renderer = new THREE.WebGLRenderer({ alpha: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
@@ -167,16 +207,103 @@ function startGame() {
   const playerGeometry = new THREE.BoxGeometry(1, 0.5, 0.5);
   const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
   player = new THREE.Mesh(playerGeometry, playerMaterial);
-  player.position.y = -3;
+  player.position.y = -5;
   scene.add(player);
 
   projectiles = [];
   resetAliens();
   createGameBox();
+
+  // Load Shader Background
+  const fragmentShaderCode = await loadShader('/shaders/space.glsl');
+  const backgroundScene = new THREE.Scene();
+  const backgroundCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+  backgroundCamera.position.z = 1;
+
+  const backgroundMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      u_time: { value: 0.0 },
+      u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    },
+    vertexShader: `
+      void main() {
+        gl_Position = vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: fragmentShaderCode,
+    depthWrite: false
+  });
+
+  const backgroundMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), backgroundMaterial);
+  backgroundScene.add(backgroundMesh);
+
+  // Resize Handler
+  window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    backgroundMaterial.uniforms.u_resolution.value.set(window.innerWidth, window.innerHeight);
+  });
+
+  const clock = new THREE.Clock();
+
+  // Main Render Loop (Shader always running)
+  function animate() {
+    requestAnimationFrame(animate);
+
+    // Update Shader background continuously
+    backgroundMaterial.uniforms.u_time.value += clock.getDelta();
+
+    if (!gameOver) {
+      updatePlayerMovement();
+
+      for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
+        const projectile = projectiles[pIndex];
+        projectile.position.y += 0.1;
+        if (projectile.position.y > 5) {
+          scene.remove(projectile);
+          projectiles.splice(pIndex, 1);
+        }
+      }
+
+      for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
+        const projectile = projectiles[pIndex];
+        for (let aIndex = aliens.length - 1; aIndex >= 0; aIndex--) {
+          const alien = aliens[aIndex];
+          const dx = projectile.position.x - alien.position.x;
+          const dy = projectile.position.y - alien.position.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance < 0.4) {
+            scene.remove(alien);
+            scene.remove(projectile);
+            aliens.splice(aIndex, 1);
+            projectiles.splice(pIndex, 1);
+            points += 10;
+            updateScoreBoard();
+            break;
+          }
+        }
+      }
+
+      updateAliens();
+      checkPlayerCollision();
+      checkLevelCompletion();
+
+      updateLivesPosition();
+    }
+
+    // Always render background and scene (even during Game Over)
+    renderer.autoClear = false;
+    renderer.clear();
+    renderer.render(backgroundScene, backgroundCamera);
+    renderer.render(scene, camera);
+  }
+
   animate();
 }
 
-// ========================== PLAYER MOVEMENT ==========================
+
+// ------------------- Player Movement -------------------
 function updatePlayerMovement() {
   if (keys["a"] || keys["arrowleft"]) {
     player.position.x = Math.max(-playAreaLimit, player.position.x - playerSpeed);
@@ -186,7 +313,7 @@ function updatePlayerMovement() {
   }
 }
 
-// ========================== PROJECTILES ==========================
+// ------------------- Projectiles -------------------
 const maxProjectiles = 3;
 function shootProjectile() {
   if (projectiles.length >= maxProjectiles) return;
@@ -198,7 +325,7 @@ function shootProjectile() {
   projectiles.push(projectile);
 }
 
-// ========================== ALIEN MOVEMENT (DISCRETE STEPS) ==========================
+// ------------------- Alien Movement (Discrete Steps) -------------------
 function updateAliens() {
   const now = Date.now();
   if (now - lastAlienMoveTime < alienMoveDelay) return;
@@ -234,6 +361,7 @@ function checkPlayerCollision() {
       console.log("Player hit!");
       playerLives--;
       updateScoreBoard();
+      updateLivesDisplay();  // <--- Refresh lives UI
       if (playerLives <= 0) {
         console.log("Game Over!");
         gameOver = true;
@@ -244,7 +372,7 @@ function checkPlayerCollision() {
   }
 }
 
-// ========================== GAME OVER POPUP ==========================
+// ------------------- Game Over Popup -------------------
 function displayGameOverPopup() {
   const overlay = document.getElementById("gameOverOverlay");
   overlay.classList.remove("hidden");
@@ -283,12 +411,14 @@ function displayGameOverPopup() {
   };
 }
 
-// ========================== GAME LOOP ==========================
+// ------------------- Main Render Loop -------------------
 function animate() {
   if (gameOver) return;
   requestAnimationFrame(animate);
+
   updatePlayerMovement();
 
+  // Update projectile positions
   for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
     const projectile = projectiles[pIndex];
     projectile.position.y += 0.1;
@@ -298,6 +428,7 @@ function animate() {
     }
   }
 
+  // Check collisions with aliens
   for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
     const projectile = projectiles[pIndex];
     for (let aIndex = aliens.length - 1; aIndex >= 0; aIndex--) {
@@ -321,10 +452,15 @@ function animate() {
   updateAliens();
   checkPlayerCollision();
   checkLevelCompletion();
+
+  // Render the scene
   renderer.render(scene, camera);
+
+  // Move the "Lives" display to follow the ship
+  updateLivesPosition();
 }
 
-// ========================== LEVEL PROGRESSION ==========================
+// ------------------- Level Progression -------------------
 function checkLevelCompletion() {
   if (aliens.length === 0) {
     points += 50;
@@ -370,9 +506,11 @@ function resetAliens() {
       const alienGeometry = new THREE.SphereGeometry(0.3, 16, 16);
       const alienMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
       const alien = new THREE.Mesh(alienGeometry, alienMaterial);
-      alien.position.set((c - cols / 2) * alienSpacing,
-                         (r - rows / 2) * alienSpacing + baseYOffset,
-                         0);
+      alien.position.set(
+        (c - cols / 2) * alienSpacing,
+        (r - rows / 2) * alienSpacing + baseYOffset,
+        0
+      );
       scene.add(alien);
       aliens.push(alien);
     }
@@ -380,7 +518,7 @@ function resetAliens() {
   console.log("Aliens reset for phase " + enemyPhase);
 }
 
-// ========================== GAME BOX (VISIBLE BOUNDARIES) ==========================
+// ------------------- Game Box (Visible Boundaries) -------------------
 function createGameBox() {
   const boxWidth = 16;
   const boxHeight = 12;
@@ -393,6 +531,6 @@ function createGameBox() {
   scene.add(gameBox);
 }
 
-// For testing, prefill the leaderboard on load
+// Prefill leaderboard data on load
 prefillLeaderboard();
 updateLeaderboard();
