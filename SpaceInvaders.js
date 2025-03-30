@@ -18,8 +18,8 @@ const horizontalOffset = -2;
 let alienDirection = 1;         // 1 means moving right, -1 means left
 let lastAlienMoveTime = Date.now();
 const alienMoveDelay = 1000;    // ms between moves
-const horizontalStep = 2;
-const verticalStep = 2;
+const horizontalStep = 1;
+const verticalStep = 1;
 
 // Global game scoring and lives
 let points = 0;
@@ -317,7 +317,7 @@ function updatePlayerMovement() {
 }
 
 // ------------------- Projectiles -------------------
-const maxProjectiles = 3;
+const maxProjectiles = 5;
 function shootProjectile() {
   if (projectiles.length >= maxProjectiles) return;
   const projectileGeometry = new THREE.ConeGeometry(0.1, 0.5, 4);
