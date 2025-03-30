@@ -8,9 +8,11 @@ let scene, camera, renderer;
 let aliens = [];
 let player;
 let projectiles = [];
-let playAreaLimit = 7;
+let playAreaLimit = 11;
 let playerSpeed = 0.1;
 const keys = {};
+
+const horizontalOffset = -2; 
 
 // Global variables for discrete alien movement
 let alienDirection = 1;         // 1 means moving right, -1 means left
@@ -208,6 +210,7 @@ async function startGame() {
   const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
   player = new THREE.Mesh(playerGeometry, playerMaterial);
   player.position.y = -5;
+  player.position.x = horizontalOffset; // apply horizontal offset
   scene.add(player);
 
   projectiles = [];
@@ -306,10 +309,10 @@ async function startGame() {
 // ------------------- Player Movement -------------------
 function updatePlayerMovement() {
   if (keys["a"] || keys["arrowleft"]) {
-    player.position.x = Math.max(-playAreaLimit, player.position.x - playerSpeed);
+    player.position.x = Math.max(-playAreaLimit + horizontalOffset, player.position.x - playerSpeed);
   }
   if (keys["d"] || keys["arrowright"]) {
-    player.position.x = Math.min(playAreaLimit, player.position.x + playerSpeed);
+    player.position.x = Math.min(playAreaLimit + horizontalOffset, player.position.x + playerSpeed);
   }
 }
 
@@ -331,8 +334,8 @@ function updateAliens() {
   if (now - lastAlienMoveTime < alienMoveDelay) return;
   lastAlienMoveTime = now;
 
-  const leftBoundary = -7;
-  const rightBoundary = 7;
+  const leftBoundary = -11 + horizontalOffset; // apply horizontal offset
+  const rightBoundary = 11 + horizontalOffset; // apply horizontal offset
   let hitBoundary = false;
   aliens.forEach(alien => {
     if ((alien.position.x + horizontalStep * alienDirection) < leftBoundary ||
@@ -507,7 +510,7 @@ function resetAliens() {
       const alienMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
       const alien = new THREE.Mesh(alienGeometry, alienMaterial);
       alien.position.set(
-        (c - cols / 2) * alienSpacing,
+        (c - cols / 2) * alienSpacing + horizontalOffset, // apply horizontal offset
         (r - rows / 2) * alienSpacing + baseYOffset,
         0
       );
@@ -520,16 +523,17 @@ function resetAliens() {
 
 // ------------------- Game Box (Visible Boundaries) -------------------
 function createGameBox() {
-  const boxWidth = 16;
-  const boxHeight = 12;
+  const boxWidth = 22;
+  const boxHeight = 16;
   const boxDepth = 1;
   const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
   const edges = new THREE.EdgesGeometry(boxGeometry);
   const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
   const gameBox = new THREE.LineSegments(edges, lineMaterial);
-  gameBox.position.set(0, 0, -1);
+  gameBox.position.set(horizontalOffset, 0, -1);  // apply horizontal offset
   scene.add(gameBox);
 }
+
 
 // Prefill leaderboard data on load
 prefillLeaderboard();
