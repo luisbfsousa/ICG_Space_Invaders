@@ -11,6 +11,8 @@ let projectiles = [];
 let playAreaLimit = 11;
 let playerSpeed = 0.1;
 const keys = {};
+let alienProjectiles = [];
+
 
 const horizontalOffset = -2; 
 
@@ -264,6 +266,49 @@ async function startGame() {
     if (!gameOver) {
       updatePlayerMovement();
   
+      // === True POV Camera Movement (Level 3) ===
+      if (currentLevel === 3) {
+        // Place camera at the ship’s cockpit with slight Y offset for realism
+        const offset = new THREE.Vector3(0, 0.3, 0.5); // fine-tune as needed
+        camera.position.copy(player.position.clone().add(offset));
+      
+        // Look ahead slightly from the ship’s current position
+        const lookAt = player.position.clone().add(new THREE.Vector3(0, 500, 0));
+        camera.lookAt(lookAt);
+      }
+
+      // === Move alien bullets downward ===
+      for (let i = alienProjectiles.length - 1; i >= 0; i--) {
+        const bullet = alienProjectiles[i];
+        bullet.position.y -= 0.1;
+  
+        // Remove bullets off screen
+        if (bullet.position.y < -10) {
+          scene.remove(bullet);
+          alienProjectiles.splice(i, 1);
+          continue;
+        }
+  
+        // Check collision with player
+        const dx = bullet.position.x - player.position.x;
+        const dy = bullet.position.y - player.position.y;
+        const dz = bullet.position.z - player.position.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  
+        if (dist < 0.5 && !alienProjectiles[i].userData?.fromDodgingAlien) {
+          scene.remove(bullet);
+          alienProjectiles.splice(i, 1);
+          playerLives--;
+          updateLivesDisplay();
+          updateScoreBoard();
+          if (playerLives <= 0) {
+            gameOver = true;
+            displayGameOverPopup();
+          }
+        }
+      }
+  
+      // === Move player projectiles upward ===
       for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
         const projectile = projectiles[pIndex];
         projectile.position.y += 0.1;
@@ -272,7 +317,29 @@ async function startGame() {
           projectiles.splice(pIndex, 1);
         }
       }
+
+      // === Detect collision between player bullets and alien bullets ===
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        const playerBullet = projectiles[i];
+        for (let j = alienProjectiles.length - 1; j >= 0; j--) {
+          const alienBullet = alienProjectiles[j];
+          const dx = playerBullet.position.x - alienBullet.position.x;
+          const dy = playerBullet.position.y - alienBullet.position.y;
+          const dz = playerBullet.position.z - alienBullet.position.z;
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        
+          if (dist < 0.3) {
+            scene.remove(playerBullet);
+            scene.remove(alienBullet);
+            projectiles.splice(i, 1);
+            alienProjectiles.splice(j, 1);
+            break; // break inner loop after removing this player bullet
+          }
+        }
+      }
+
   
+      // === Check collisions with aliens ===
       for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
         const projectile = projectiles[pIndex];
         for (let aIndex = aliens.length - 1; aIndex >= 0; aIndex--) {
@@ -280,7 +347,8 @@ async function startGame() {
           const dx = projectile.position.x - alien.position.x;
           const dy = projectile.position.y - alien.position.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
-          if (distance < 0.4) {
+          const collisionThreshold = 0.4;
+          if (distance < collisionThreshold && !alien.userData.isDodging) {
             scene.remove(alien);
             scene.remove(projectile);
             aliens.splice(aIndex, 1);
@@ -299,35 +367,35 @@ async function startGame() {
     }
   
     // ========== Smooth Camera Transition ==========
-    if (isCameraTransitioning) {
+    if (isCameraTransitioning && currentLevel !== 3) {
       const currentPosition = camera.position.clone();
       const newPosition = currentPosition.lerp(cameraTargetPosition, 0.05);
       camera.position.copy(newPosition);
-  
+    
       const currentLook = new THREE.Vector3();
       camera.getWorldDirection(currentLook);
       const newLook = currentLook.lerp(cameraTargetLookAt.clone().sub(camera.position).normalize(), 0.05);
       camera.lookAt(camera.position.clone().add(newLook));
-  
+    
       const positionDiff = camera.position.distanceTo(cameraTargetPosition);
       const lookDiff = camera.getWorldDirection(new THREE.Vector3()).distanceTo(
         cameraTargetLookAt.clone().sub(camera.position).normalize()
       );
-  
+    
       if (positionDiff < 0.05 && lookDiff < 0.05) {
         camera.position.copy(cameraTargetPosition);
         camera.lookAt(cameraTargetLookAt);
         isCameraTransitioning = false;
       }
     }
+
   
     // Always render background and scene (even during Game Over)
     renderer.autoClear = false;
     renderer.clear();
     renderer.render(backgroundScene, backgroundCamera);
     renderer.render(scene, camera);
-  }
-  
+  }  
 
   animate();
 }
@@ -353,6 +421,17 @@ function shootProjectile() {
   projectile.position.set(player.position.x, player.position.y + 0.5, 0);
   scene.add(projectile);
   projectiles.push(projectile);
+}
+
+function alienShoot(alien) {
+  const bulletGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.5, 6);
+  const bulletMaterial = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+  const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+  bullet.rotation.x = Math.PI / 2;
+  bullet.position.set(alien.position.x, alien.position.y - 0.5, alien.position.z);
+  bullet.userData.fromDodgingAlien = currentLevel === 2 && alien.userData.isDodging;
+  scene.add(bullet);
+  alienProjectiles.push(bullet);
 }
 
 // ------------------- Alien Movement (Discrete Steps) -------------------
@@ -441,54 +520,7 @@ function displayGameOverPopup() {
   };
 }
 
-// ------------------- Main Render Loop -------------------
-function animate() {
-  if (gameOver) return;
-  requestAnimationFrame(animate);
 
-  updatePlayerMovement();
-
-  // Update projectile positions
-  for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
-    const projectile = projectiles[pIndex];
-    projectile.position.y += 0.1;
-    if (projectile.position.y > 5) {
-      scene.remove(projectile);
-      projectiles.splice(pIndex, 1);
-    }
-  }
-
-  // Check collisions with aliens
-  for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
-    const projectile = projectiles[pIndex];
-    for (let aIndex = aliens.length - 1; aIndex >= 0; aIndex--) {
-      const alien = aliens[aIndex];
-      const dx = projectile.position.x - alien.position.x;
-      const dy = projectile.position.y - alien.position.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      const collisionThreshold = 0.4;
-      if (distance < collisionThreshold) {
-        scene.remove(alien);
-        scene.remove(projectile);
-        aliens.splice(aIndex, 1);
-        projectiles.splice(pIndex, 1);
-        points += 10;
-        updateScoreBoard();
-        break;
-      }
-    }
-  }
-
-  updateAliens();
-  checkPlayerCollision();
-  checkLevelCompletion();
-
-  // Render the scene
-  renderer.render(scene, camera);
-
-  // Move the "Lives" display to follow the ship
-  updateLivesPosition();
-}
 
 // ------------------- Level Progression -------------------
 function checkLevelCompletion() {
@@ -497,7 +529,7 @@ function checkLevelCompletion() {
     updateScoreBoard();
     projectiles.forEach(proj => scene.remove(proj));
     projectiles.length = 0;
-    currentLevel = (currentLevel % 2) + 1;
+    currentLevel = (currentLevel % 3) + 1;
     if (enemyPhase < 5) { enemyPhase++; }
     setCameraView();
     resetAliens();
@@ -511,14 +543,28 @@ function setCameraView() {
     cameraTargetPosition.set(0, 0, 10);
     cameraTargetLookAt.set(0, 0, 0);
     console.log("2D");
+
+    // Reset alien Z-positions
+    aliens.forEach(alien => {
+      if (alien.userData?.originalZ !== undefined) {
+        alien.position.z = alien.userData.originalZ;
+        alien.userData.isDodging = false;
+      }
+    });
+
   } else if (currentLevel === 2) {
     cameraTargetPosition.set(-1, -13, 2);
     cameraTargetLookAt.set(-1, 0, 0);
-    console.log("POV");
+    console.log("Side POV");
+
+  } else if (currentLevel === 3) {
+    console.log("True POV (cockpit)");
+    // Camera will be updated every frame in animate()
   }
 
   isCameraTransitioning = true;
 }
+
 
 
 function resetAliens() {
@@ -530,25 +576,60 @@ function resetAliens() {
   if (enemyPhase === 1) { rows = 2; cols = 3; } 
   else if (enemyPhase === 2) { rows = 3; cols = 3; } 
   else if (enemyPhase === 3) { rows = 4; cols = 4; } 
-  else if (enemyPhase === 4) { rows = 4; cols = 8; } 
+  else if (enemyPhase === 4) { rows = 4; cols = 6; } 
   else { rows = 5; cols = 8; }
   
   const baseYOffset = 4;
   const alienSpacing = 1.5;
+
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const alienGeometry = new THREE.SphereGeometry(0.3, 16, 16);
       const alienMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
       const alien = new THREE.Mesh(alienGeometry, alienMaterial);
       alien.position.set(
-        (c - cols / 2) * alienSpacing + horizontalOffset, // apply horizontal offset
+        (c - cols / 2) * alienSpacing + horizontalOffset,
         (r - rows / 2) * alienSpacing + baseYOffset,
         0
       );
       scene.add(alien);
       aliens.push(alien);
+
+      // === Dodging Behavior for POV Mode ===
+      alien.userData.isDodging = false;
+      alien.userData.originalZ = alien.position.z;
+
+      const tryDodge = () => {
+        if (gameOver || (currentLevel !== 2 && currentLevel !== 3) || !aliens.includes(alien)) return;
+
+        const dodgeDuration = 100 + Math.random() * 3900; // 0.1s - 3s
+        const dodgeOffset = Math.random() < 0.5 ? 0.5 : -0.5;
+
+        alien.userData.isDodging = true;
+        alien.position.z += dodgeOffset;
+
+        setTimeout(() => {
+          if (!aliens.includes(alien)) return;
+          alien.position.z = alien.userData.originalZ;
+          alien.userData.isDodging = false;
+
+          setTimeout(tryDodge, 2000 + Math.random() * 3000); // cooldown
+        }, dodgeDuration);
+      };
+
+      setTimeout(tryDodge, 1000 + Math.random() * 2000);
+
+      // === Shooting Behavior ===
+      const shootRandomly = () => {
+        if (gameOver || !aliens.includes(alien)) return;
+        alienShoot(alien);
+        const nextShotIn = 3000 + Math.random() * 4000;
+        setTimeout(shootRandomly, nextShotIn);
+      };
+      setTimeout(shootRandomly, Math.random() * 2000 + 1000);
     }
   }
+
   console.log("Aliens reset for phase " + enemyPhase);
 }
 
@@ -569,3 +650,19 @@ function createGameBox() {
 // Prefill leaderboard data on load
 prefillLeaderboard();
 updateLeaderboard();
+
+// ==== CAMERA DEBUG SWITCH (DEV ONLY) ====
+document.addEventListener("mousedown", (event) => {
+  if (event.button === 2) { // Right-click to cycle camera levels
+    currentLevel = (currentLevel % 3) + 1;
+    setCameraView();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key.toLowerCase() === "p") {
+    currentLevel = (currentLevel % 3) + 1;
+    setCameraView();
+  }
+});
+// ==== END DEBUG SWITCH ====
