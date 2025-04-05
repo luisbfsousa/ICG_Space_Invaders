@@ -153,24 +153,32 @@ function toScreenPosition(obj, camera) {
 // We'll call this in the render loop to position .lives-container
 function updateLivesPosition() {
   const livesEl = document.getElementById('livesContainer');
-  // Get the canvas's actual position and size
-  const canvasRect = renderer.domElement.getBoundingClientRect();
-  
-  const vector = new THREE.Vector3();
-  vector.copy(player.position);
-  vector.project(camera);
 
-  // Convert normalized device coordinates to canvas pixel coordinates
-  const x = (vector.x + 1) / 2 * canvasRect.width + canvasRect.left;
-  const y = (-vector.y + 1) / 2 * canvasRect.height + canvasRect.top;
+  if (currentLevel === 3) {
+    // True POV — manually pin to top-left
+    livesEl.style.position = 'fixed';
+    livesEl.style.left = '20px';
+    livesEl.style.top = '20px';
+  } else {
+    // All other views — follow player
+    const canvasRect = renderer.domElement.getBoundingClientRect();
   
-  // Offsets so the lives display is positioned next to the ship
-  const offsetX = 30;
-  const offsetY = -10;
+    const vector = new THREE.Vector3();
+    vector.copy(player.position);
+    vector.project(camera);
   
-  livesEl.style.left = (x + offsetX) + 'px';
-  livesEl.style.top = (y + offsetY) + 'px';
+    const x = (vector.x + 1) / 2 * canvasRect.width + canvasRect.left;
+    const y = (-vector.y + 1) / 2 * canvasRect.height + canvasRect.top;
+  
+    const offsetX = 30;
+    const offsetY = -10;
+  
+    livesEl.style.position = 'absolute';
+    livesEl.style.left = (x + offsetX) + 'px';
+    livesEl.style.top = (y + offsetY) + 'px';
+  }
 }
+
 
 
 // ------------------- Keyboard Handling -------------------
@@ -265,14 +273,10 @@ async function startGame() {
   
     if (!gameOver) {
       updatePlayerMovement();
-  
-      // === True POV Camera Movement (Level 3) ===
-      if (currentLevel === 3) {
-        // Place camera at the ship’s cockpit with slight Y offset for realism
-        const offset = new THREE.Vector3(0, 0.3, 0.5); // fine-tune as needed
+
+      if (currentLevel === 3 && !isCameraTransitioning) {
+        const offset = new THREE.Vector3(0, 0.3, 0.5);
         camera.position.copy(player.position.clone().add(offset));
-      
-        // Look ahead slightly from the ship’s current position
         const lookAt = player.position.clone().add(new THREE.Vector3(0, 500, 0));
         camera.lookAt(lookAt);
       }
@@ -317,6 +321,14 @@ async function startGame() {
           projectiles.splice(pIndex, 1);
         }
       }
+
+      if (currentLevel === 3 && !isCameraTransitioning) {
+        const offset = new THREE.Vector3(0, 0.3, 0.5);
+        camera.position.copy(player.position.clone().add(offset));
+        const lookAt = player.position.clone().add(new THREE.Vector3(0, 500, 0));
+        camera.lookAt(lookAt);
+      }
+      
 
       // === Detect collision between player bullets and alien bullets ===
       for (let i = projectiles.length - 1; i >= 0; i--) {
@@ -367,14 +379,21 @@ async function startGame() {
     }
   
     // ========== Smooth Camera Transition ==========
-    if (isCameraTransitioning && currentLevel !== 3) {
+    if (isCameraTransitioning) {
       const currentPosition = camera.position.clone();
-      const newPosition = currentPosition.lerp(cameraTargetPosition, 0.05);
+      // Use faster transition for Level 3
+      const lerpSpeed = currentLevel === 3 ? 0.15 : 0.05;
+          
+      const newPosition = currentPosition.lerp(cameraTargetPosition, lerpSpeed);
       camera.position.copy(newPosition);
-    
+          
       const currentLook = new THREE.Vector3();
       camera.getWorldDirection(currentLook);
-      const newLook = currentLook.lerp(cameraTargetLookAt.clone().sub(camera.position).normalize(), 0.05);
+      const newLook = currentLook.lerp(
+        cameraTargetLookAt.clone().sub(camera.position).normalize(),
+        lerpSpeed
+      );
+      camera.lookAt(camera.position.clone().add(newLook));
       camera.lookAt(camera.position.clone().add(newLook));
     
       const positionDiff = camera.position.distanceTo(cameraTargetPosition);
@@ -513,7 +532,8 @@ function displayGameOverPopup() {
 
   const submitButton = document.getElementById("gameOverSubmit");
   submitButton.onclick = function () {
-    const playerName = input.innerText.trim();
+    let playerName = input.innerText.replace(/\s+/g, ' ').trim();
+    if (playerName === "") playerName = "???";
     console.log("Player Name:", playerName);
     storeNewScore(playerName, points);
     location.reload();
@@ -559,7 +579,13 @@ function setCameraView() {
 
   } else if (currentLevel === 3) {
     console.log("True POV (cockpit)");
-    // Camera will be updated every frame in animate()
+
+    // Set the target to just behind the ship
+    const offset = new THREE.Vector3(0, 0.3, 0.5);
+    cameraTargetPosition.copy(player.position.clone().add(offset));
+
+    // Look far upward for depth illusion
+    cameraTargetLookAt.copy(player.position.clone().add(new THREE.Vector3(0, 500, 0)));
   }
 
   isCameraTransitioning = true;
@@ -602,8 +628,8 @@ function resetAliens() {
       const tryDodge = () => {
         if (gameOver || (currentLevel !== 2 && currentLevel !== 3) || !aliens.includes(alien)) return;
 
-        const dodgeDuration = 100 + Math.random() * 3900; // 0.1s - 3s
-        const dodgeOffset = Math.random() < 0.5 ? 0.5 : -0.5;
+        const dodgeDuration = 100 + Math.random() * 3900; // 0.1s - 4s
+        const dodgeOffset = Math.random() < 0.5 ? 1.5 : -1.5;
 
         alien.userData.isDodging = true;
         alien.position.z += dodgeOffset;
@@ -651,7 +677,7 @@ function createGameBox() {
 prefillLeaderboard();
 updateLeaderboard();
 
-// ==== CAMERA DEBUG SWITCH (DEV ONLY) ====
+// ======== DEBUG ========
 document.addEventListener("mousedown", (event) => {
   if (event.button === 2) { // Right-click to cycle camera levels
     currentLevel = (currentLevel % 3) + 1;
@@ -665,4 +691,4 @@ document.addEventListener("keydown", (event) => {
     setCameraView();
   }
 });
-// ==== END DEBUG SWITCH ====
+
