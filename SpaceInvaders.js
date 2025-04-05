@@ -14,6 +14,10 @@ const keys = {};
 
 const horizontalOffset = -2; 
 
+let cameraTargetPosition = new THREE.Vector3();
+let cameraTargetLookAt = new THREE.Vector3();
+let isCameraTransitioning = false;
+
 // Global variables for discrete alien movement
 let alienDirection = 1;         // 1 means moving right, -1 means left
 let lastAlienMoveTime = Date.now();
@@ -253,13 +257,13 @@ async function startGame() {
   // Main Render Loop (Shader always running)
   function animate() {
     requestAnimationFrame(animate);
-
+  
     // Update Shader background continuously
     backgroundMaterial.uniforms.u_time.value += clock.getDelta();
-
+  
     if (!gameOver) {
       updatePlayerMovement();
-
+  
       for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
         const projectile = projectiles[pIndex];
         projectile.position.y += 0.1;
@@ -268,7 +272,7 @@ async function startGame() {
           projectiles.splice(pIndex, 1);
         }
       }
-
+  
       for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
         const projectile = projectiles[pIndex];
         for (let aIndex = aliens.length - 1; aIndex >= 0; aIndex--) {
@@ -287,20 +291,43 @@ async function startGame() {
           }
         }
       }
-
+  
       updateAliens();
       checkPlayerCollision();
       checkLevelCompletion();
-
       updateLivesPosition();
     }
-
+  
+    // ========== Smooth Camera Transition ==========
+    if (isCameraTransitioning) {
+      const currentPosition = camera.position.clone();
+      const newPosition = currentPosition.lerp(cameraTargetPosition, 0.05);
+      camera.position.copy(newPosition);
+  
+      const currentLook = new THREE.Vector3();
+      camera.getWorldDirection(currentLook);
+      const newLook = currentLook.lerp(cameraTargetLookAt.clone().sub(camera.position).normalize(), 0.05);
+      camera.lookAt(camera.position.clone().add(newLook));
+  
+      const positionDiff = camera.position.distanceTo(cameraTargetPosition);
+      const lookDiff = camera.getWorldDirection(new THREE.Vector3()).distanceTo(
+        cameraTargetLookAt.clone().sub(camera.position).normalize()
+      );
+  
+      if (positionDiff < 0.05 && lookDiff < 0.05) {
+        camera.position.copy(cameraTargetPosition);
+        camera.lookAt(cameraTargetLookAt);
+        isCameraTransitioning = false;
+      }
+    }
+  
     // Always render background and scene (even during Game Over)
     renderer.autoClear = false;
     renderer.clear();
     renderer.render(backgroundScene, backgroundCamera);
     renderer.render(scene, camera);
   }
+  
 
   animate();
 }
@@ -479,16 +506,20 @@ function checkLevelCompletion() {
 
 function setCameraView() {
   if (!camera) return;
+
   if (currentLevel === 1) {
-    camera.position.set(0, 0, 10);
-    camera.lookAt(0, 0, 0);
+    cameraTargetPosition.set(0, 0, 10);
+    cameraTargetLookAt.set(0, 0, 0);
     console.log("2D");
   } else if (currentLevel === 2) {
-    camera.position.set(0, -15, 3);
-    camera.lookAt(0, 0, 0);
+    cameraTargetPosition.set(-1, -13, 2);
+    cameraTargetLookAt.set(-1, 0, 0);
     console.log("POV");
   }
+
+  isCameraTransitioning = true;
 }
+
 
 function resetAliens() {
   if (!scene) return;
