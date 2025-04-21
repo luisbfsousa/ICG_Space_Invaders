@@ -230,7 +230,7 @@ async function startGame() {
   projectiles = [];
   resetAliens();
   createGameBox();
-  createBelt()
+  const asteroidBelt = createBelt();
 
   // Load Shader Background
   const fragmentShaderCode = await loadShader('/shaders/space.glsl');
@@ -271,6 +271,10 @@ async function startGame() {
   
     // Update Shader background continuously
     backgroundMaterial.uniforms.u_time.value += clock.getDelta();
+
+    if (!gameOver && asteroidBelt) {
+      asteroidBelt.animate();
+    }
   
     if (!gameOver) {
       updatePlayerMovement();
@@ -674,33 +678,100 @@ function createGameBox() {
 }
 
 function createBelt() {
-  const radius = 20; // Increased radius to make the circle longer
-  const segments = 32; // Number of segments in the half-circle
+  const radius = 20;
+  const segments = 75;
+  const belt = new THREE.Group();
   
-  // Create points for half-circle (from -π/2 to π/2)
-  const points = [];
+  // Asteroid size tiers with speed multipliers
+  const sizeTiers = [
+    { min: 0.2, max: 0.3, speedMult: 3.5 }, // Small (faster)
+    { min: 0.4, max: 0.6, speedMult: 1.7 },  // Medium
+    { min: 0.7, max: 1.0, speedMult: 1 }   // Large (slower)
+  ];
+  
+  // BASE SPEED CONTROL - ADJUST THIS VALUE TO CHANGE ALL SPEEDS
+  const baseSpeed = 0.003; // Start with this very slow value
+  
+  const materials = [
+    new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.9 }),
+    new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 }),
+    new THREE.MeshStandardMaterial({ color: 0x999999, roughness: 0.7 })
+  ];
+
   for (let i = 0; i <= segments; i++) {
     const theta = (i / segments) * Math.PI - Math.PI / 2;
-    points.push(new THREE.Vector3(
-      Math.cos(theta) * radius + horizontalOffset, // Apply horizontal offset
+    
+    // Size tier selection
+    const tierRoll = Math.random();
+    let tierIndex;
+    if (tierRoll < 0.6) tierIndex = 0;
+    else if (tierRoll < 0.9) tierIndex = 1;
+    else tierIndex = 2;
+    
+    const tier = sizeTiers[tierIndex];
+    const size = tier.min + Math.random() * (tier.max - tier.min);
+    
+    // Create geometry
+    const geometry = tierIndex === 2 
+      ? new THREE.IcosahedronGeometry(size, 1) 
+      : new THREE.SphereGeometry(size, 8, 6);
+    
+    // Vertical offset - larger asteroids stay closer to center
+    const zOffset = (Math.random() - 0.5) * (2 - tierIndex * 0.6);
+    
+    const asteroid = new THREE.Mesh(geometry, materials[tierIndex]);
+    
+    asteroid.position.set(
+      Math.cos(theta) * radius + horizontalOffset,
       Math.sin(theta) * radius,
-      0 // Z position
-    ));
+      zOffset
+    );
+    
+    asteroid.rotation.set(
+      Math.random() * Math.PI * 2,
+      Math.random() * Math.PI * 2,
+      Math.random() * Math.PI * 2
+    );
+    
+    // SPEED CONTROL - THREE PLACES TO ADJUST:
+    // 1. Base speed (defined above)
+    // 2. Individual variation (0-30% of base speed)
+    // 3. Size multiplier (from sizeTiers)
+    asteroid.userData = {
+      speed: baseSpeed * (1 + Math.random() * 0.3) * tier.speedMult,
+      direction: Math.random() > 0.5 ? 1 : -1,
+      rotationSpeed: 0.002 + Math.random() * 0.003 // SLOW rotation
+    };
+    
+    belt.add(asteroid);
   }
 
-  // Create geometry and line
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineBasicMaterial({ color: 0x00ff00 }); // Green color
-  const halfCircle = new THREE.Line(geometry, material);
+  belt.position.set(0, 0, 1);
+  belt.position.x += horizontalOffset;
+  belt.rotation.z = Math.PI / 2;
+  scene.add(belt);
   
-  // Position the half-circle (adjust as needed)
-  halfCircle.position.set(0, 0, 1); // Move forward in Z-axis
-  halfCircle.position.x += horizontalOffset; // Apply horizontal offset
-
-  halfCircle.rotation.z = Math.PI / 2; // Rotate to point north
+  function animateBelt() {
+    belt.children.forEach(asteroid => {
+      const data = asteroid.userData;
+      const angle = Math.atan2(asteroid.position.y, asteroid.position.x - horizontalOffset);
+      const newAngle = angle + data.speed * data.direction;
+      
+      asteroid.position.set(
+        Math.cos(newAngle) * radius + horizontalOffset,
+        Math.sin(newAngle) * radius,
+        asteroid.position.z
+      );
+      
+      asteroid.rotation.x += data.rotationSpeed;
+      asteroid.rotation.y += data.rotationSpeed * 0.7;
+    });
+  }
   
-  scene.add(halfCircle);
-  return halfCircle; // Return the line if you want to manipulate it later
+  return {
+    group: belt,
+    animate: animateBelt
+  };
 }
 
 // Prefill leaderboard data on load
