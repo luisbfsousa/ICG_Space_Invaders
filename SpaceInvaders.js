@@ -683,22 +683,45 @@ function createBelt() {
   const belt = new THREE.Group();
   
   // Asteroid size tiers
-  const sizeTiers = [{min:0.2,max:0.3,speedMult:3.5},{min:0.4,max:0.6,speedMult:1.7},{min:0.7,max:1.0,speedMult:1}];
+  const sizeTiers = [
+    { min: 0.2, max: 0.3, speedMult: 3.5 }, // Small (faster)
+    { min: 0.4, max: 0.6, speedMult: 1.7 },  // Medium
+    { min: 0.7, max: 1.0, speedMult: 1 }     // Large (slower)
+  ];
   
   // Launch probabilities (per second)
-  const launchProbabilities = [0.5,0.1,0.05]; // Small, Medium, Large
+  const launchProbabilities = [0.5, 0.1, 0.05]; // Small, Medium, Large
   const baseSpeed = 0.003;
+
+  // Texture loader
+  const textureLoader = new THREE.TextureLoader();
   
-  // WHITE material for belt asteroids
-  const beltMaterial = new THREE.MeshStandardMaterial({color: 0xffffff,roughness: 0.8});
-  // PINK material for attacking asteroids
-  const attackMaterial = new THREE.MeshStandardMaterial({color: 0xff66aa,roughness: 0.7});
+  // Load asteroid texture
+  const asteroidTexture = textureLoader.load('images/asteroid_texture.jpg');
+  asteroidTexture.wrapS = THREE.RepeatWrapping;
+  asteroidTexture.wrapT = THREE.RepeatWrapping;
+  asteroidTexture.repeat.set(1, 1);
+  
+  // Materials with texture
+  const beltMaterial = new THREE.MeshStandardMaterial({ 
+    map: asteroidTexture,
+    color: 0xffffff,  // White tint
+    roughness: 0.8,
+    metalness: 0.2
+  });
+  
+  const attackMaterial = new THREE.MeshStandardMaterial({ 
+    map: asteroidTexture,
+    color: 0xff66aa,  // Pink tint
+    roughness: 0.7,
+    metalness: 0.2
+  });
 
   // Array to track launched asteroids
   const launchedAsteroids = [];
   let lastLaunchCheck = Date.now();
 
-  // Create regular belt asteroids (WHITE)
+  // Create regular belt asteroids (with texture)
   for (let i = 0; i <= segments; i++) {
     const theta = (i / segments) * Math.PI - Math.PI / 2;
     
@@ -717,14 +740,25 @@ function createBelt() {
     
     const zOffset = (Math.random() - 0.5) * (2 - tierIndex * 0.6);
     
-    // Use WHITE material for belt asteroids
     const asteroid = new THREE.Mesh(geometry, beltMaterial);
     
-    asteroid.position.set(Math.cos(theta) * radius + horizontalOffset,Math.sin(theta) * radius,zOffset);
+    asteroid.position.set(
+      Math.cos(theta) * radius + horizontalOffset,
+      Math.sin(theta) * radius,
+      zOffset
+    );
     
-    asteroid.rotation.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
+    asteroid.rotation.set(
+      Math.random() * Math.PI * 2,
+      Math.random() * Math.PI * 2,
+      Math.random() * Math.PI * 2
+    );
     
-    asteroid.userData = {speed: baseSpeed * (1 + Math.random() * 0.3) * tier.speedMult,direction: Math.random() > 0.5 ? 1 : -1,rotationSpeed: 0.002 + Math.random() * 0.003};
+    asteroid.userData = {
+      speed: baseSpeed * (1 + Math.random() * 0.3) * tier.speedMult,
+      direction: Math.random() > 0.5 ? 1 : -1,
+      rotationSpeed: 0.002 + Math.random() * 0.003
+    };
     
     belt.add(asteroid);
   }
@@ -749,7 +783,7 @@ function createBelt() {
       }
     }
 
-    // Update launched asteroids with curved trajectories (PINK)
+    // Update launched asteroids with curved trajectories
     for (let i = launchedAsteroids.length - 1; i >= 0; i--) {
       const asteroid = launchedAsteroids[i];
       
@@ -766,7 +800,9 @@ function createBelt() {
       asteroid.rotation.z += asteroid.userData.rotationSpeed * 0.5;
       
       // Remove if off screen
-      if (asteroid.position.y < -10 || asteroid.position.x < -15 || asteroid.position.x > 15) {
+      if (asteroid.position.y < -10 || 
+          asteroid.position.x < -15 || 
+          asteroid.position.x > 15) {
         scene.remove(asteroid);
         launchedAsteroids.splice(i, 1);
         continue;
@@ -789,13 +825,17 @@ function createBelt() {
       }
     }
 
-    // Update belt asteroids (normal circular movement - WHITE)
+    // Update belt asteroids (normal circular movement)
     belt.children.forEach(asteroid => {
       const data = asteroid.userData;
       const angle = Math.atan2(asteroid.position.y, asteroid.position.x - horizontalOffset);
       const newAngle = angle + data.speed * data.direction;
       
-      asteroid.position.set(Math.cos(newAngle) * radius + horizontalOffset,Math.sin(newAngle) * radius,asteroid.position.z);
+      asteroid.position.set(
+        Math.cos(newAngle) * radius + horizontalOffset,
+        Math.sin(newAngle) * radius,
+        asteroid.position.z
+      );
       
       asteroid.rotation.x += data.rotationSpeed;
       asteroid.rotation.y += data.rotationSpeed * 0.7;
@@ -806,7 +846,7 @@ function createBelt() {
     const tier = sizeTiers[tierIndex];
     const size = tier.min + Math.random() * (tier.max - tier.min);
     
-    // Create new asteroid with PINK material
+    // Create new asteroid with attack material
     const geometry = tierIndex === 2 
       ? new THREE.IcosahedronGeometry(size, 1) 
       : new THREE.SphereGeometry(size, 8, 6);
@@ -818,12 +858,20 @@ function createBelt() {
     asteroid.position.set(startX, 10, 0);
     
     // Initial rotation
-    asteroid.rotation.set(Math.random() * Math.PI * 2,Math.random() * Math.PI * 2,Math.random() * Math.PI * 2);
+    asteroid.rotation.set(
+      Math.random() * Math.PI * 2,
+      Math.random() * Math.PI * 2,
+      Math.random() * Math.PI * 2
+    );
     
     // Determine curved trajectory
     const horizontalSpeed = (Math.random() - 0.5) * 0.08; // More pronounced curve
     
-    asteroid.userData = {horizontalSpeed: horizontalSpeed,rotationSpeed: 0.005 + Math.random() * 0.01,curveFactor: 1 + Math.random() * 0.02};
+    asteroid.userData = {
+      horizontalSpeed: horizontalSpeed,
+      rotationSpeed: 0.005 + Math.random() * 0.01,
+      curveFactor: 1 + Math.random() * 0.02 // Slightly different curves
+    };
     
     scene.add(asteroid);
     launchedAsteroids.push(asteroid);
