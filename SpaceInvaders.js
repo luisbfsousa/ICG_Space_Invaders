@@ -44,17 +44,7 @@ function prefillLeaderboard() {
     return;
   }
 
-  const initialData = [
-    { name: "%app%", score: 10000 },
-    { name: "Teste",  score: 90 },
-    { name: "AHHHH",  score: 70 },
-    { name: "Quart",  score: 60 },
-    { name: "Quint",  score: 55 },
-    { name: "Sexto",  score: 50 },
-    { name: "Seti",   score: 40 },
-    { name: "Oitav",  score: 30 },
-    { name: "Non",    score: 25 },
-  ];
+  const initialData = [{ name: "%app%",score: 10000 },{ name: "Teste",score: 90 },{ name: "AHHHH",score: 70 },{ name: "Quart",score: 60 },{ name: "Quint",score: 55 },{ name: "Sexto",score: 50 },{ name: "Seti",score: 40 },{ name: "Oitav",score: 30 },{ name: "Non",score: 25 }];
   saveLeaderboardData(initialData);
 }
 
@@ -934,13 +924,6 @@ prefillLeaderboard();
 updateLeaderboard();
 
 // ======== DEBUG ========
-document.addEventListener("mousedown", (event) => {
-  if (event.button === 2) { // Right-click to cycle camera levels
-    currentLevel = (currentLevel % 3) + 1;
-    setCameraView();
-  }
-});
-
 document.addEventListener("keydown", (event) => {
   if (event.key.toLowerCase() === "p") {
     currentLevel = (currentLevel % 3) + 1;
