@@ -13,7 +13,6 @@ let playerSpeed = 0.1;
 const keys = {};
 let alienProjectiles = [];
 
-
 const horizontalOffset = -2; 
 
 let cameraTargetPosition = new THREE.Vector3();
@@ -179,8 +178,6 @@ function updateLivesPosition() {
   }
 }
 
-
-
 // ------------------- Keyboard Handling -------------------
 document.addEventListener("keydown", (event) => {
   keys[event.key.toLowerCase()] = true;
@@ -334,7 +331,6 @@ async function startGame() {
         camera.lookAt(lookAt);
       }
       
-
       // === Detect collision between player bullets and alien bullets ===
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const playerBullet = projectiles[i];
@@ -344,7 +340,6 @@ async function startGame() {
           const dy = playerBullet.position.y - alienBullet.position.y;
           const dz = playerBullet.position.z - alienBullet.position.z;
           const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        
           if (dist < 0.3) {
             scene.remove(playerBullet);
             scene.remove(alienBullet);
@@ -355,10 +350,19 @@ async function startGame() {
         }
       }
 
-  
       // === Check collisions with aliens ===
       for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
         const projectile = projectiles[pIndex];
+        projectile.position.y += 0.1;
+        
+        // Check for asteroid hits first
+        if (asteroidBelt.checkAsteroidHit(projectile)) {
+          scene.remove(projectile);
+          projectiles.splice(pIndex, 1);
+          continue;
+        }
+        
+        // Then check for alien hits as before
         for (let aIndex = aliens.length - 1; aIndex >= 0; aIndex--) {
           const alien = aliens[aIndex];
           const dx = projectile.position.x - alien.position.x;
@@ -366,14 +370,19 @@ async function startGame() {
           const distance = Math.sqrt(dx * dx + dy * dy);
           const collisionThreshold = 0.4;
           if (distance < collisionThreshold && !alien.userData.isDodging) {
-            scene.remove(alien);
-            scene.remove(projectile);
-            aliens.splice(aIndex, 1);
-            projectiles.splice(pIndex, 1);
-            points += 10;
-            updateScoreBoard();
-            break;
+              scene.remove(alien);
+              scene.remove(projectile);
+              aliens.splice(aIndex, 1);
+              projectiles.splice(pIndex, 1);
+              points += 10;  // Points only awarded when player kills aliens
+              updateScoreBoard();
+              break;
           }
+        }
+        
+        if (projectile.position.y > 5) {
+          scene.remove(projectile);
+          projectiles.splice(pIndex, 1);
         }
       }
   
@@ -394,10 +403,7 @@ async function startGame() {
           
       const currentLook = new THREE.Vector3();
       camera.getWorldDirection(currentLook);
-      const newLook = currentLook.lerp(
-        cameraTargetLookAt.clone().sub(camera.position).normalize(),
-        lerpSpeed
-      );
+      const newLook = currentLook.lerp(cameraTargetLookAt.clone().sub(camera.position).normalize(),lerpSpeed);
       camera.lookAt(camera.position.clone().add(newLook));
       camera.lookAt(camera.position.clone().add(newLook));
     
@@ -413,7 +419,6 @@ async function startGame() {
       }
     }
 
-  
     // Always render background and scene (even during Game Over)
     renderer.autoClear = false;
     renderer.clear();
@@ -487,21 +492,20 @@ function updateAliens() {
 
 function checkPlayerCollision() {
   for (let i = 0; i < aliens.length; i++) {
-    const alien = aliens[i];
-    const xDist = Math.abs(alien.position.x - player.position.x);
-    const yDist = Math.abs(alien.position.y - player.position.y);
-    if (xDist < (0.5 + 0.3) && yDist < (0.25 + 0.3)) {
-      console.log("Player hit!");
-      playerLives--;
-      updateScoreBoard();
-      updateLivesDisplay();  // <--- Refresh lives UI
-      if (playerLives <= 0) {
-        console.log("Game Over!");
-        gameOver = true;
-        displayGameOverPopup();
+      const alien = aliens[i];
+      const xDist = Math.abs(alien.position.x - player.position.x);
+      const yDist = Math.abs(alien.position.y - player.position.y);
+      if (xDist < (0.5 + 0.3) && yDist < (0.25 + 0.3)) {
+          console.log("Player hit!");
+          playerLives--;
+          updateLivesDisplay();
+          if (playerLives <= 0) {
+              console.log("Game Over!");
+              gameOver = true;
+              displayGameOverPopup();
+          }
+          break;
       }
-      break;
-    }
   }
 }
 
@@ -618,11 +622,7 @@ function resetAliens() {
       const alienGeometry = new THREE.SphereGeometry(0.3, 16, 16);
       const alienMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
       const alien = new THREE.Mesh(alienGeometry, alienMaterial);
-      alien.position.set(
-        (c - cols / 2) * alienSpacing + horizontalOffset,
-        (r - rows / 2) * alienSpacing + baseYOffset,
-        0
-      );
+      alien.position.set((c - cols / 2) * alienSpacing + horizontalOffset,(r - rows / 2) * alienSpacing + baseYOffset,0);
       scene.add(alien);
       aliens.push(alien);
 
@@ -660,7 +660,6 @@ function resetAliens() {
       setTimeout(shootRandomly, Math.random() * 2000 + 1000);
     }
   }
-
   console.log("Aliens reset for phase " + enemyPhase);
 }
 
@@ -682,48 +681,40 @@ function createBelt() {
   const segments = 75;
   const belt = new THREE.Group();
   
-  // Asteroid size tiers
-  const sizeTiers = [
-    { min: 0.2, max: 0.3, speedMult: 3.5 }, // Small (faster)
-    { min: 0.4, max: 0.6, speedMult: 1.7 },  // Medium
-    { min: 0.7, max: 1.0, speedMult: 1 }     // Large (slower)
-  ];
+  // Asteroid size tiers - you can adjust these
+  const sizeTiers = [{ min: 0.2, max: 0.3, speedMult: 3.5, type: 'small' }, 
+                     { min: 0.4, max: 0.6, speedMult: 1.7, type: 'medium' },
+                     { min: 0.7, max: 1.0, speedMult: 1, type: 'large' }];
   
-  // Launch probabilities (per second)
-  const launchProbabilities = [0.5, 0.1, 0.05]; // Small, Medium, Large
-  const baseSpeed = 0.003;
+  const launchProbabilities = {small: 0.99,medium: 0.99,large: 0.99};
 
-  // Texture loader
-  const textureLoader = new THREE.TextureLoader();
-  
-  // Load asteroid texture
-  const asteroidTexture = textureLoader.load('images/asteroid_texture.jpg');
-  asteroidTexture.wrapS = THREE.RepeatWrapping;
-  asteroidTexture.wrapT = THREE.RepeatWrapping;
-  asteroidTexture.repeat.set(1, 1);
-  
-  // Materials with texture
-  const beltMaterial = new THREE.MeshStandardMaterial({ 
-    map: asteroidTexture,
-    color: 0xffffff,  // White tint
-    roughness: 0.8,
-    metalness: 0.2
-  });
-  
-  const attackMaterial = new THREE.MeshStandardMaterial({ 
-    map: asteroidTexture,
-    color: 0xff66aa,  // Pink tint
-    roughness: 0.7,
-    metalness: 0.2
-  });
+  // Fallback material if texture fails
+  const beltMaterial = new THREE.MeshStandardMaterial({ color: 0x888888,roughness: 0.8,metalness: 0.2});
+  const attackMaterial = new THREE.MeshStandardMaterial({ color: 0xff66aa,roughness: 0.7,metalness: 0.2});
 
-  // Array to track launched asteroids
+  // Try loading texture (but it's optional)
+  try {
+    const textureLoader = new THREE.TextureLoader();
+    const asteroidTexture = textureLoader.load('images/asteroid_texture.jpg');
+    asteroidTexture.wrapS = THREE.RepeatWrapping;
+    asteroidTexture.wrapT = THREE.RepeatWrapping;
+    asteroidTexture.repeat.set(1, 1);
+    beltMaterial.map = asteroidTexture;
+    attackMaterial.map = asteroidTexture;
+  } catch (e) {
+    console.log("Using fallback materials - texture not found");
+  }
+
   const launchedAsteroids = [];
   let lastLaunchCheck = Date.now();
 
-  // Create regular belt asteroids (with texture)
+  // Create regular belt asteroids
   for (let i = 0; i <= segments; i++) {
-    const theta = (i / segments) * Math.PI - Math.PI / 2;
+    createBeltAsteroid();
+  }
+
+  function createBeltAsteroid() {
+    const theta = (Math.random() * Math.PI) - (Math.PI / 2);
     
     const tierRoll = Math.random();
     let tierIndex;
@@ -742,25 +733,21 @@ function createBelt() {
     
     const asteroid = new THREE.Mesh(geometry, beltMaterial);
     
-    asteroid.position.set(
-      Math.cos(theta) * radius + horizontalOffset,
-      Math.sin(theta) * radius,
-      zOffset
-    );
+    asteroid.position.set(Math.cos(theta) * radius + horizontalOffset, Math.sin(theta) * radius, zOffset);
     
-    asteroid.rotation.set(
-      Math.random() * Math.PI * 2,
-      Math.random() * Math.PI * 2,
-      Math.random() * Math.PI * 2
-    );
+    asteroid.rotation.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
     
+    // CRUCIAL: Add movement properties
     asteroid.userData = {
-      speed: baseSpeed * (1 + Math.random() * 0.3) * tier.speedMult,
-      direction: Math.random() > 0.5 ? 1 : -1,
-      rotationSpeed: 0.002 + Math.random() * 0.003
+      speed: 0.005 + Math.random() * 0.01,
+      direction: Math.random() < 0.5 ? 1 : -1,
+      horizontalSpeed: (Math.random() - 0.5) * 0.08,
+      rotationSpeed: 0.005 + Math.random() * 0.01,
+      sizeType: tier.type
     };
     
     belt.add(asteroid);
+    return asteroid;
   }
 
   belt.position.set(0, 0, 1);
@@ -769,73 +756,77 @@ function createBelt() {
   scene.add(belt);
   
   function animateBelt() {
-    // Check for new launches periodically
+    // Check for new launches periodically (every 100ms)
     const now = Date.now();
-    if (now - lastLaunchCheck > 100) { // Check every 100ms
+    if (now - lastLaunchCheck > 100) {
       lastLaunchCheck = now;
       
-      // Determine if we should launch a new asteroid
-      for (let tier = 0; tier < 3; tier++) {
-        const probability = launchProbabilities[tier] * 0.1; // Convert to per-check probability
-        if (Math.random() < probability) {
-          launchNewAsteroid(tier);
-        }
-      }
+      // Check each tier for possible launch
+      if (Math.random() < launchProbabilities.small * 0.1) {launchNewAsteroid(0);}    // small
+      if (Math.random() < launchProbabilities.medium * 0.1) {launchNewAsteroid(1); } // medium
+      if (Math.random() < launchProbabilities.large * 0.1) {launchNewAsteroid(2); } // large
     }
 
-    // Update launched asteroids with curved trajectories
+    // Update launched asteroids
     for (let i = launchedAsteroids.length - 1; i >= 0; i--) {
       const asteroid = launchedAsteroids[i];
       
-      // Apply both vertical and horizontal movement
-      asteroid.position.y -= 0.15; // Base downward speed
+      asteroid.position.y -= 0.10;
       asteroid.position.x += asteroid.userData.horizontalSpeed;
+      asteroid.userData.horizontalSpeed *= 1.01;
       
-      // Add slight curve by adjusting horizontal speed over time
-      asteroid.userData.horizontalSpeed *= 1.01; // Gradually curve more
-      
-      // Rotate during flight
       asteroid.rotation.x += asteroid.userData.rotationSpeed;
       asteroid.rotation.y += asteroid.userData.rotationSpeed * 0.7;
       asteroid.rotation.z += asteroid.userData.rotationSpeed * 0.5;
       
-      // Remove if off screen
-      if (asteroid.position.y < -10 || 
-          asteroid.position.x < -15 || 
-          asteroid.position.x > 15) {
-        scene.remove(asteroid);
-        launchedAsteroids.splice(i, 1);
+      // Remove if off-screen
+      if (asteroid.position.y < -10 || Math.abs(asteroid.position.x - horizontalOffset) > 15) {
+        removeAsteroid(asteroid, launchedAsteroids, i);
         continue;
       }
       
-      // Check collision with player
-      const dx = asteroid.position.x - player.position.x;
-      const dy = asteroid.position.y - player.position.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      // Check player collision
+      const playerDist = Math.sqrt(Math.pow(asteroid.position.x - player.position.x, 2) + Math.pow(asteroid.position.y - player.position.y, 2));
       
-      if (dist < 0.8) {
+      if (playerDist < 0.8) {
         playerLives--;
         updateLivesDisplay();
-        scene.remove(asteroid);
-        launchedAsteroids.splice(i, 1);
-        if (playerLives <= 0) {
+        removeAsteroid(asteroid, launchedAsteroids, i);
+        if (playerLives <= 0){
           gameOver = true;
           displayGameOverPopup();
-        }
+        }continue;
       }
+      
+      // Check alien collision
+      for (let j = aliens.length - 1; j >= 0; j--) {
+        const alien = aliens[j];
+        const alienDist = Math.sqrt(Math.pow(asteroid.position.x - alien.position.x, 2) + Math.pow(asteroid.position.y - alien.position.y, 2));
+        
+        if (alienDist < 0.7) {
+            scene.remove(alien);
+            aliens.splice(j, 1);
+            
+            if (asteroid.userData.sizeType === 'small') {
+                removeAsteroid(asteroid, launchedAsteroids, i);
+            } else if (asteroid.userData.sizeType === 'medium') {
+                const pos = asteroid.position.clone();
+                removeAsteroid(asteroid, launchedAsteroids, i);
+                createSplitAsteroid(pos, 'small', Math.PI/4);
+                createSplitAsteroid(pos, 'small', -Math.PI/4);
+            }
+            break;
+          }
+        }
     }
 
-    // Update belt asteroids (normal circular movement)
+    // Animate belt asteroids
     belt.children.forEach(asteroid => {
       const data = asteroid.userData;
       const angle = Math.atan2(asteroid.position.y, asteroid.position.x - horizontalOffset);
-      const newAngle = angle + data.speed * data.direction;
+      const newAngle = angle + (data.speed * data.direction);
       
-      asteroid.position.set(
-        Math.cos(newAngle) * radius + horizontalOffset,
-        Math.sin(newAngle) * radius,
-        asteroid.position.z
-      );
+      asteroid.position.set(Math.cos(newAngle) * radius + horizontalOffset, Math.sin(newAngle) * radius, asteroid.position.z);
       
       asteroid.rotation.x += data.rotationSpeed;
       asteroid.rotation.y += data.rotationSpeed * 0.7;
@@ -846,41 +837,96 @@ function createBelt() {
     const tier = sizeTiers[tierIndex];
     const size = tier.min + Math.random() * (tier.max - tier.min);
     
-    // Create new asteroid with attack material
     const geometry = tierIndex === 2 
       ? new THREE.IcosahedronGeometry(size, 1) 
       : new THREE.SphereGeometry(size, 8, 6);
     
     const asteroid = new THREE.Mesh(geometry, attackMaterial);
     
-    // Start position at top of screen with random x
-    const startX = (Math.random() * 16 - 8) + horizontalOffset; // -8 to 8 range
+    const startX = (Math.random() * 16 - 8) + horizontalOffset;
     asteroid.position.set(startX, 10, 0);
     
-    // Initial rotation
-    asteroid.rotation.set(
-      Math.random() * Math.PI * 2,
-      Math.random() * Math.PI * 2,
-      Math.random() * Math.PI * 2
-    );
-    
-    // Determine curved trajectory
-    const horizontalSpeed = (Math.random() - 0.5) * 0.08; // More pronounced curve
+    asteroid.rotation.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
     
     asteroid.userData = {
-      horizontalSpeed: horizontalSpeed,
+      horizontalSpeed: (Math.random() - 0.5) * 0.07,
       rotationSpeed: 0.005 + Math.random() * 0.01,
-      curveFactor: 1 + Math.random() * 0.02 // Slightly different curves
+      curveFactor: 1 + Math.random() * 0.02,
+      sizeType: tier.type,
+      health: tierIndex + 1
     };
     
     scene.add(asteroid);
     launchedAsteroids.push(asteroid);
   }
   
-  return {
-    group: belt,
-    animate: animateBelt
-  };
+  function removeAsteroid(asteroid, array, index) {
+    scene.remove(asteroid);
+    if (array && index !== undefined) {
+      array.splice(index, 1);
+    }
+  }
+  // New function to handle asteroid splitting
+  function splitAsteroid(asteroid) {
+    const position = asteroid.position.clone();
+    const sizeType = asteroid.userData.sizeType;
+
+    removeAsteroid(asteroid, launchedAsteroids);
+
+    if (sizeType === 'large') {
+        const offset = 0.5;
+        createSplitAsteroid(new THREE.Vector3(position.x + offset, position.y, position.z), 'medium', Math.PI / 4);
+        createSplitAsteroid(new THREE.Vector3(position.x - offset, position.y, position.z), 'medium', -Math.PI / 4);
+    } else if (sizeType === 'medium') {
+        const offset = 0.5;
+        createSplitAsteroid(new THREE.Vector3(position.x + offset, position.y, position.z), 'small', Math.PI / 4);
+        createSplitAsteroid(new THREE.Vector3(position.x - offset, position.y, position.z), 'small', -Math.PI / 4);
+    }
+  }
+  
+  function createSplitAsteroid(position, sizeType, angle) {
+    const tierIndex = sizeType === 'small' ? 0 : (sizeType === 'medium' ? 1 : 2);
+    const tier = sizeTiers[tierIndex];
+    const size = tier.min + Math.random() * (tier.max - tier.min);
+    
+    const geometry = tierIndex === 2 
+        ? new THREE.IcosahedronGeometry(size, 1) 
+        : new THREE.SphereGeometry(size, 8, 6);
+    
+    const asteroid = new THREE.Mesh(geometry, attackMaterial);
+    asteroid.position.copy(position);
+    
+    asteroid.rotation.set(Math.random() * Math.PI * 2,Math.random() * Math.PI * 2,Math.random() * Math.PI * 2);
+    
+    // Consistent but varied movement for fragments
+    const baseSpeed = sizeType === 'medium' ? 0.05 : 0.07;
+    const speedVariation = 0.7 + Math.random() * 0.6;
+    
+    asteroid.userData = {
+        horizontalSpeed: Math.cos(angle) * baseSpeed * speedVariation,
+        verticalSpeed: -baseSpeed * (0.5 + Math.abs(Math.sin(angle)) * speedVariation),
+        rotationSpeed: 0.01 + Math.random() * 0.02,
+        sizeType: sizeType,
+        health: 1,
+        isFragment: true
+    };
+    scene.add(asteroid);
+    launchedAsteroids.push(asteroid);
+  }
+  
+  // Add this to your shootProjectile function
+  function checkAsteroidHit(projectile) {
+    for (let i = launchedAsteroids.length - 1; i >= 0; i--) {
+      const asteroid = launchedAsteroids[i];
+      const dist = Math.sqrt(Math.pow(projectile.position.x - asteroid.position.x, 2) + Math.pow(projectile.position.y - asteroid.position.y, 2));
+      if (dist < 0.5) {
+        scene.remove(projectile);
+        splitAsteroid(asteroid);
+        return true;
+      }
+    }return false;
+  }
+  return {group: belt,animate: animateBelt,checkAsteroidHit: checkAsteroidHit};
 }
 
 // Prefill leaderboard data on load
@@ -901,4 +947,3 @@ document.addEventListener("keydown", (event) => {
     setCameraView();
   }
 });
-
