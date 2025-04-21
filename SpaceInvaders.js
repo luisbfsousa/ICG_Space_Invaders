@@ -230,6 +230,7 @@ async function startGame() {
   projectiles = [];
   resetAliens();
   createGameBox();
+  createBelt()
 
   // Load Shader Background
   const fragmentShaderCode = await loadShader('/shaders/space.glsl');
@@ -672,6 +673,35 @@ function createGameBox() {
   scene.add(gameBox);
 }
 
+function createBelt() {
+  const radius = 20; // Increased radius to make the circle longer
+  const segments = 32; // Number of segments in the half-circle
+  
+  // Create points for half-circle (from -π/2 to π/2)
+  const points = [];
+  for (let i = 0; i <= segments; i++) {
+    const theta = (i / segments) * Math.PI - Math.PI / 2;
+    points.push(new THREE.Vector3(
+      Math.cos(theta) * radius + horizontalOffset, // Apply horizontal offset
+      Math.sin(theta) * radius,
+      0 // Z position
+    ));
+  }
+
+  // Create geometry and line
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineBasicMaterial({ color: 0x00ff00 }); // Green color
+  const halfCircle = new THREE.Line(geometry, material);
+  
+  // Position the half-circle (adjust as needed)
+  halfCircle.position.set(0, 0, 1); // Move forward in Z-axis
+  halfCircle.position.x += horizontalOffset; // Apply horizontal offset
+
+  halfCircle.rotation.z = Math.PI / 2; // Rotate to point north
+  
+  scene.add(halfCircle);
+  return halfCircle; // Return the line if you want to manipulate it later
+}
 
 // Prefill leaderboard data on load
 prefillLeaderboard();
