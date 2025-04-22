@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { PixelArt } from './pixelArt.js';  // Import PixelArt if needed
 import { createOctopus, createSquid, createCrab } from '../models/enemys.js';  // Consistent import path
 
 
@@ -35,11 +34,6 @@ function init() {
   const pointLight = new THREE.PointLight(0xffffff, 1, 1000);
   pointLight.position.set(50, 50, 50);
   scene.add(pointLight);
-
-  console.log("THREE loaded:", THREE);
-  console.log("GLTFLoader:", GLTFLoader);
-  console.log("PixelArt:", PixelArt);
-  console.log("createOctopus:", createOctopus);
 
   const octopus = createOctopus();
   octopus.mesh.position.set(0, 140, -50);
