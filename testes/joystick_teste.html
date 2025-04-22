@@ -26,23 +26,29 @@
 
     <script type="importmap">
         {
-            "imports": {
-                  "three": "https://threejs.org/build/three.module.js",
-                  "GLTFLoader": "https://threejs.org/examples/jsm/loaders/GLTFLoader.js"
-            }
+          "imports": {
+            "three": "https://threejs.org/build/three.module.js",
+            "three/addons/": "https://threejs.org/examples/jsm/"
           }
-    </script>
+        }
+        </script>
 
     <script type="module">
+        // First load three.js and other dependencies
         import { renderCustomShader } from './background.js';
-      
-        // Start the background shader and store the controller globally
+        import { PixelArt } from './pixelArt.js';
+        import { createOctopus, createSquid, createCrab } from '../models/enemys.js';
+        
+        // Make functions globally available
+        window.createOctopus = createOctopus;
+        window.createSquid = createSquid;
+        window.createCrab = createCrab;
+        
         (async () => {
           window.bgController = await renderCustomShader();
         })();
-      </script>
-      
-      <script type="module" src="joystick.js"></script>
+    </script>
+    <script type="module" src="joystick.js"></script>
       
 
 

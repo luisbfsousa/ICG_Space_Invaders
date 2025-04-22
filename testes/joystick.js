@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'GLTFLoader';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { PixelArt } from './pixelArt.js';  // Import PixelArt if needed
+import { createOctopus, createSquid, createCrab } from '../models/enemys.js';  // Consistent import path
+
 
 let joystickMoving, base, sphere, cylinder, button;
 let isDragging = false;        // For joystick movement (right mouse)
@@ -32,6 +35,29 @@ function init() {
   const pointLight = new THREE.PointLight(0xffffff, 1, 1000);
   pointLight.position.set(50, 50, 50);
   scene.add(pointLight);
+
+  console.log("THREE loaded:", THREE);
+  console.log("GLTFLoader:", GLTFLoader);
+  console.log("PixelArt:", PixelArt);
+  console.log("createOctopus:", createOctopus);
+
+  const octopus = createOctopus();
+  octopus.mesh.position.set(0, 140, -50);
+  octopus.mesh.rotation.y = Math.PI/2.5;
+  octopus.mesh.scale.set(2, 2, 2);
+  scene.add(octopus.mesh);
+
+  const crab = createCrab();
+  crab.mesh.position.set(0, 140, -100);  // Changed from octopus.mesh to crab.mesh
+  crab.mesh.rotation.y = Math.PI/2.5;
+  crab.mesh.scale.set(2, 2, 2);
+  scene.add(crab.mesh);
+
+  const squid = createSquid();  // Fixed typo from createSquids()
+  squid.mesh.position.set(0, 140, -150);  // Changed from octopus.mesh to squid.mesh
+  squid.mesh.rotation.y = Math.PI/2.5;
+  squid.mesh.scale.set(2, 2, 2);
+  scene.add(squid.mesh);
 
   // Fixed base
   const baseGeometry = new THREE.CylinderGeometry(8, 8, 5, 32);
