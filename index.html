@@ -91,9 +91,15 @@
     });
   </script>
 
-  <!-- Three.js library -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <!-- Main Game Script -->
-  <script src="SpaceInvaders.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js",
+        "three/addons/": "https://threejs.org/examples/jsm/"
+      }
+    }
+  </script>
+  
+  <script type="module" src="SpaceInvaders.js"></script>
 </body>
 </html>

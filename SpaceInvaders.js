@@ -2,6 +2,9 @@ document.getElementById("playButton").addEventListener("click", () => {
   setTimeout(startGame, 1000);
 });
 
+import * as THREE from 'three';
+import { createOctopus, createSquid, createCrab } from './models/enemys.js';
+
 let currentLevel = 1; 
 let enemyPhase = 1; 
 let scene, camera, renderer;
@@ -123,6 +126,19 @@ function updateLivesDisplay() {
   const livesEl = document.getElementById("livesContainer");
   livesEl.innerHTML = `Lifes: ${playerLives}`;
 }
+
+/*
+function updateAliens() {
+  const now = Date.now();
+  // Speed increases as aliens are eliminated (minimum 300ms delay)
+  const speedFactor = Math.max(0.3, aliens.length / (rows * cols));
+  const currentMoveDelay = alienMoveDelay * speedFactor;
+  
+  if (now - lastAlienMoveTime < currentMoveDelay) return;
+  lastAlienMoveTime = now;
+
+  // Rest of the function remains the same...
+}*/ // ideia para dificuldade
 
 // ------------------- 3D to 2D Projection Helper -------------------
 function toScreenPosition(obj, camera) {
@@ -341,35 +357,37 @@ async function startGame() {
       }
 
       // === Check collisions with aliens ===
+      // Replace the simple distance check with this:
       for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
         const projectile = projectiles[pIndex];
         projectile.position.y += 0.1;
-        
+
         // Check for asteroid hits first
         if (asteroidBelt.checkAsteroidHit(projectile)) {
           scene.remove(projectile);
           projectiles.splice(pIndex, 1);
           continue;
         }
-        
-        // Then check for alien hits as before
+
+        // Then check for alien hits with bounding boxes
         for (let aIndex = aliens.length - 1; aIndex >= 0; aIndex--) {
           const alien = aliens[aIndex];
-          const dx = projectile.position.x - alien.position.x;
-          const dy = projectile.position.y - alien.position.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          const collisionThreshold = 0.4;
-          if (distance < collisionThreshold && !alien.userData.isDodging) {
-              scene.remove(alien);
-              scene.remove(projectile);
-              aliens.splice(aIndex, 1);
-              projectiles.splice(pIndex, 1);
-              points += 10;  // Points only awarded when player kills aliens
-              updateScoreBoard();
-              break;
+
+          // Create bounding boxes
+          const alienBox = new THREE.Box3().setFromObject(alien);
+          const projectileBox = new THREE.Box3().setFromObject(projectile);
+
+          if (alienBox.intersectsBox(projectileBox) && !alien.userData.isDodging) {
+            scene.remove(alien);
+            scene.remove(projectile);
+            aliens.splice(aIndex, 1);
+            projectiles.splice(pIndex, 1);
+            points += 10;
+            updateScoreBoard();
+            break;
           }
         }
-        
+
         if (projectile.position.y > 5) {
           scene.remove(projectile);
           projectiles.splice(pIndex, 1);
@@ -406,6 +424,9 @@ async function startGame() {
         camera.position.copy(cameraTargetPosition);
         camera.lookAt(cameraTargetLookAt);
         isCameraTransitioning = false;
+        if (aliens.length === 0) {
+          resetAliens();
+        }
       }
     }
 
@@ -481,21 +502,23 @@ function updateAliens() {
 }
 
 function checkPlayerCollision() {
+  const playerBox = new THREE.Box3().setFromObject(player);
+  
   for (let i = 0; i < aliens.length; i++) {
-      const alien = aliens[i];
-      const xDist = Math.abs(alien.position.x - player.position.x);
-      const yDist = Math.abs(alien.position.y - player.position.y);
-      if (xDist < (0.5 + 0.3) && yDist < (0.25 + 0.3)) {
-          console.log("Player hit!");
-          playerLives--;
-          updateLivesDisplay();
-          if (playerLives <= 0) {
-              console.log("Game Over!");
-              gameOver = true;
-              displayGameOverPopup();
-          }
-          break;
+    const alien = aliens[i];
+    const alienBox = new THREE.Box3().setFromObject(alien);
+    
+    if (alienBox.intersectsBox(playerBox)) {
+      console.log("Player hit!");
+      playerLives--;
+      updateLivesDisplay();
+      if (playerLives <= 0) {
+        console.log("Game Over!");
+        gameOver = true;
+        displayGameOverPopup();
       }
+      break;
+    }
   }
 }
 
@@ -543,13 +566,27 @@ function displayGameOverPopup() {
 
 // ------------------- Level Progression -------------------
 function checkLevelCompletion() {
-  if (aliens.length === 0) {
+  if (aliens.length === 0 && !gameOver && !isCameraTransitioning) {
     points += 50;
     updateScoreBoard();
+    
+    // Clear all projectiles
     projectiles.forEach(proj => scene.remove(proj));
     projectiles.length = 0;
-    currentLevel = (currentLevel % 3) + 1;
-    if (enemyPhase < 5) { enemyPhase++; }
+    alienProjectiles.forEach(proj => scene.remove(proj));
+    alienProjectiles.length = 0;
+
+    // Progress to next level
+    currentLevel = (currentLevel % 3) + 1; // Cycle through 1-3
+    
+    // Increment phase immediately with each level change
+    if (enemyPhase < 5) {
+      enemyPhase++;
+    }
+
+    console.log("Progressing to Level", currentLevel, "Phase", enemyPhase);
+    
+    // Set camera view and reset aliens
     setCameraView();
     resetAliens();
   }
@@ -558,36 +595,35 @@ function checkLevelCompletion() {
 function setCameraView() {
   if (!camera) return;
 
+  isCameraTransitioning = true;
+
   if (currentLevel === 1) {
+    // Top-down view
     cameraTargetPosition.set(0, 0, 10);
     cameraTargetLookAt.set(0, 0, 0);
-    console.log("2D");
-
-    // Reset alien Z-positions
-    aliens.forEach(alien => {
-      if (alien.userData?.originalZ !== undefined) {
-        alien.position.z = alien.userData.originalZ;
-        alien.userData.isDodging = false;
-      }
-    });
-
   } else if (currentLevel === 2) {
+    // Side view
     cameraTargetPosition.set(-1, -13, 2);
     cameraTargetLookAt.set(-1, 0, 0);
-    console.log("Side POV");
-
   } else if (currentLevel === 3) {
-    console.log("True POV (cockpit)");
-
-    // Set the target to just behind the ship
-    const offset = new THREE.Vector3(0, 0.3, 0.5);
-    cameraTargetPosition.copy(player.position.clone().add(offset));
-
-    // Look far upward for depth illusion
+    // First-person view
+    cameraTargetPosition.copy(player.position.clone().add(new THREE.Vector3(0, 0.3, 0.5)));
     cameraTargetLookAt.copy(player.position.clone().add(new THREE.Vector3(0, 500, 0)));
   }
 
-  isCameraTransitioning = true;
+  // Reset alien rotations and positions based on level
+  aliens.forEach(alien => {
+    if (currentLevel === 1) {
+      alien.rotation.set(0, 0, 0);
+      if (alien.userData?.originalZ !== undefined) {
+        alien.position.z = alien.userData.originalZ;
+      }
+    } else {
+      alien.rotation.set(Math.PI/2+0.2, 0, 0);
+      alien.position.z = 0;
+    }
+    alien.userData.isDodging = false;
+  });
 }
 
 
@@ -598,59 +634,79 @@ function resetAliens() {
   aliens.length = 0;
   
   let rows, cols;
-  if (enemyPhase === 1) { rows = 2; cols = 3; } 
-  else if (enemyPhase === 2) { rows = 3; cols = 3; } 
-  else if (enemyPhase === 3) { rows = 4; cols = 4; } 
-  else if (enemyPhase === 4) { rows = 4; cols = 6; } 
-  else { rows = 5; cols = 8; }
+  // Use current enemyPhase to determine formation
+  if (enemyPhase === 1) { rows = 1; cols = 3; } 
+  else if (enemyPhase === 2) { rows = 2; cols = 3; } 
+  else if (enemyPhase === 3) { rows = 3; cols = 3; } 
+  else if (enemyPhase === 4) { rows = 4; cols = 4; } 
+  else { rows = 5; cols = 5; }
   
   const baseYOffset = 4;
   const alienSpacing = 1.5;
 
+  // Rest of the function remains the same...
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const alienGeometry = new THREE.SphereGeometry(0.3, 16, 16);
-      const alienMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-      const alien = new THREE.Mesh(alienGeometry, alienMaterial);
-      alien.position.set((c - cols / 2) * alienSpacing + horizontalOffset,(r - rows / 2) * alienSpacing + baseYOffset,0);
-      scene.add(alien);
-      aliens.push(alien);
+      let alienMesh;
+      if (r < Math.floor(rows / 3)) {
+        const octopus = createOctopus();
+        alienMesh = octopus.mesh;
+      } else if (r < Math.floor(rows * 2 / 3)) {
+        const crab = createCrab();
+        alienMesh = crab.mesh;
+      } else {
+        const squid = createSquid();
+        alienMesh = squid.mesh;
+      }
 
-      // === Dodging Behavior for POV Mode ===
-      alien.userData.isDodging = false;
-      alien.userData.originalZ = alien.position.z;
+      alienMesh.position.set(
+        (c - cols / 2) * alienSpacing + horizontalOffset,
+        (r - rows / 2) * alienSpacing + baseYOffset,
+        0
+      );
+      
+      alienMesh.scale.set(0.1, 0.1, 0.1);
+
+      if (currentLevel !== 1) {
+        alienMesh.rotation.set(Math.PI/2, 0, 0); // Standing position
+      }
+
+      scene.add(alienMesh);
+      aliens.push(alienMesh);
+
+      // Store reference to the PixelArt instance
+      alienMesh.userData.pixelArt = alienMesh.parent;
+
+      // Dodging Behavior
+      alienMesh.userData.isDodging = false;
+      alienMesh.userData.originalZ = alienMesh.position.z;
 
       const tryDodge = () => {
-        if (gameOver || (currentLevel !== 2 && currentLevel !== 3) || !aliens.includes(alien)) return;
-
-        const dodgeDuration = 100 + Math.random() * 3900; // 0.1s - 4s
-        const dodgeOffset = Math.random() < 0.5 ? 1.5 : -1.5;
-
-        alien.userData.isDodging = true;
-        alien.position.z += dodgeOffset;
-
+        if (gameOver || (currentLevel !== 2 && currentLevel !== 3) || !aliens.includes(alienMesh)) return;
+        
+        alienMesh.userData.isDodging = true;
+        alienMesh.position.z += (Math.random() < 0.5 ? 1.5 : -1.5);
+        
         setTimeout(() => {
-          if (!aliens.includes(alien)) return;
-          alien.position.z = alien.userData.originalZ;
-          alien.userData.isDodging = false;
-
-          setTimeout(tryDodge, 2000 + Math.random() * 3000); // cooldown
-        }, dodgeDuration);
+          if (aliens.includes(alienMesh)) {
+            alienMesh.position.z = alienMesh.userData.originalZ;
+            alienMesh.userData.isDodging = false;
+            setTimeout(tryDodge, 2000 + Math.random() * 3000);
+          }
+        }, 100 + Math.random() * 3900);
       };
-
       setTimeout(tryDodge, 1000 + Math.random() * 2000);
 
-      // === Shooting Behavior ===
+      // Shooting Behavior
       const shootRandomly = () => {
-        if (gameOver || !aliens.includes(alien)) return;
-        alienShoot(alien);
-        const nextShotIn = 3000 + Math.random() * 4000;
-        setTimeout(shootRandomly, nextShotIn);
+        if (!gameOver && aliens.includes(alienMesh)) {
+          alienShoot(alienMesh);
+          setTimeout(shootRandomly, 3000 + Math.random() * 4000);
+        }
       };
-      setTimeout(shootRandomly, Math.random() * 2000 + 1000);
+      setTimeout(shootRandomly, 1000 + Math.random() * 2000);
     }
   }
-  console.log("Aliens reset for phase " + enemyPhase);
 }
 
 // ------------------- Game Box (Visible Boundaries) -------------------
@@ -676,7 +732,7 @@ function createBelt() {
                      { min: 0.4, max: 0.6, speedMult: 1.7, type: 'medium' },
                      { min: 0.7, max: 1.0, speedMult: 1, type: 'large' }];
   
-  const launchProbabilities = {small: 0.99,medium: 0.99,large: 0.99};
+  const launchProbabilities = {small: 0.1,medium: 0.1,large: 0.1};
 
   // Fallback material if texture fails
   const beltMaterial = new THREE.MeshStandardMaterial({ color: 0x888888,roughness: 0.8,metalness: 0.2});
