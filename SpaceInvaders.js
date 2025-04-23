@@ -18,6 +18,9 @@ let alienProjectiles = [];
 
 const horizontalOffset = -2; 
 
+let particleSystems = [];
+const PARTICLE_LIFETIME = 1000;
+
 let cameraTargetPosition = new THREE.Vector3();
 let cameraTargetLookAt = new THREE.Vector3();
 let isCameraTransitioning = false;
@@ -52,6 +55,93 @@ Object.values(sounds).forEach(sound => {
 async function loadShader(url) {
   const response = await fetch(url);
   return response.text();
+}
+
+// Add this with your other utility functions
+function createExplosion(position, color, count = 50) {
+  const particlesGeometry = new THREE.BufferGeometry();
+  const particlesMaterial = new THREE.PointsMaterial({
+    color: color,  // This should use the passed color
+    size: 0.1,
+    transparent: true,
+    opacity: 1,
+    blending: THREE.AdditiveBlending
+  });
+
+  const positions = new Float32Array(count * 3);
+  const velocities = new Float32Array(count * 3);
+  const opacities = new Float32Array(count);
+  const sizes = new Float32Array(count);
+
+  for (let i = 0; i < count; i++) {
+    // Initial positions (clustered around origin)
+    positions[i * 3] = (Math.random() - 0.5) * 0.5;
+    positions[i * 3 + 1] = (Math.random() - 0.5) * 0.5;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
+
+    // Random velocities (outward explosion)
+    velocities[i * 3] = (Math.random() - 0.5) * 0.2;
+    velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.2;
+    velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.2;
+
+    opacities[i] = 1;
+    sizes[i] = 0.1 + Math.random() * 0.1;
+  }
+
+  particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  particlesGeometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+  particlesGeometry.setAttribute('opacity', new THREE.BufferAttribute(opacities, 1));
+  particlesGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+  const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+  particles.position.copy(position);
+  particles.userData = {
+    lifetime: 0,
+    velocities: velocities,
+    opacities: opacities,
+    sizes: sizes
+  };
+  
+  scene.add(particles);
+  particleSystems.push(particles);
+  return particles;
+}
+
+// Add this with your other update functions
+function updateParticles() {
+  for (let i = particleSystems.length - 1; i >= 0; i--) {
+    const particles = particleSystems[i];
+    const positions = particles.geometry.attributes.position.array;
+    const velocities = particles.userData.velocities;
+    const opacities = particles.userData.opacities;
+    const sizes = particles.userData.sizes;
+    
+    particles.userData.lifetime += 16; // Assuming 60fps
+    
+    // Update particle positions
+    for (let j = 0; j < positions.length; j += 3) {
+      positions[j] += velocities[j];
+      positions[j + 1] += velocities[j + 1];
+      positions[j + 2] += velocities[j + 2];
+    }
+    
+    // Fade out particles over time
+    const progress = particles.userData.lifetime / PARTICLE_LIFETIME;
+    for (let j = 0; j < opacities.length; j++) {
+      opacities[j] = 1 - progress;
+      sizes[j] *= 0.99;
+    }
+    
+    particles.geometry.attributes.position.needsUpdate = true;
+    particles.geometry.attributes.opacity.needsUpdate = true;
+    particles.geometry.attributes.size.needsUpdate = true;
+    
+    // Remove expired particles
+    if (particles.userData.lifetime >= PARTICLE_LIFETIME) {
+      scene.remove(particles);
+      particleSystems.splice(i, 1);
+    }
+  }
 }
 
 // ------------------- Leaderboard Setup -------------------
@@ -296,6 +386,7 @@ async function startGame() {
   
     if (!gameOver) {
       updatePlayerMovement();
+      updateParticles();
 
       if (currentLevel === 3 && !isCameraTransitioning) {
         const offset = new THREE.Vector3(0, 0.3, 0.5);
@@ -331,6 +422,7 @@ async function startGame() {
           sounds.impact.currentTime = 0;
           sounds.impact.play();
           if (playerLives <= 0) {
+            createExplosion(player.position.clone(), 0x30bdff, 100);
             gameOver = true;
             displayGameOverPopup();
             sounds.death.currentTime = 0;
@@ -389,22 +481,34 @@ async function startGame() {
         }
       
         // Then check for alien hits with bounding boxes
+        // Check for alien hits with bounding boxes
+        const projectileBox = new THREE.Box3().setFromObject(projectile);
         for (let aIndex = aliens.length - 1; aIndex >= 0; aIndex--) {
-          const alien = aliens[aIndex];
-          const alienBox = new THREE.Box3().setFromObject(alien);
-          const projectileBox = new THREE.Box3().setFromObject(projectile);
-      
-          if (alienBox.intersectsBox(projectileBox) && !alien.userData.isDodging) {
-            scene.remove(alien);
-            scene.remove(projectile);
-            aliens.splice(aIndex, 1);
-            projectiles.splice(pIndex, 1);
-            points += 10;
-            updateScoreBoard();
-            sounds.impact.currentTime = 0;
-            sounds.impact.play();
-            break;
-          }
+            const alien = aliens[aIndex];
+            const alienBox = new THREE.Box3().setFromObject(alien);
+
+            if (alienBox.intersectsBox(projectileBox) && !alien.userData.isDodging) {
+                // Determine explosion color based on alien type
+                let explosionColor;
+                switch(alien.userData.type) {  // Now checking the direct type property
+                    case 'octopus': explosionColor = 0xffee00; break; // Yellow
+                    case 'crab': explosionColor = 0x08ffff; break;    // Cyan
+                    case 'squid': explosionColor = 0xec20eb; break;   // Purple
+                    default: explosionColor = 0xff0000; break;        // Fallback red
+                }
+
+                createExplosion(alien.position.clone(), explosionColor, 30);
+
+                scene.remove(alien);
+                scene.remove(projectile);
+                aliens.splice(aIndex, 1);
+                projectiles.splice(pIndex, 1);
+                points += 10;
+                updateScoreBoard();
+                sounds.impact.currentTime = 0;
+                sounds.impact.play();
+                break;
+            }
         }
       
         // Update this line to use PLAYER_PROJECTILE_RANGE instead of 5
@@ -577,6 +681,7 @@ function checkPlayerCollision() {
       sounds.impact.play();
       if (playerLives <= 0) {
         console.log("Game Over!");
+        createExplosion(player.position.clone(), 0x30bdff, 100);
         gameOver = true;
         displayGameOverPopup();
         sounds.death.currentTime = 0;
@@ -714,14 +819,32 @@ function resetAliens() {
     for (let c = 0; c < cols; c++) {
       let alienMesh;
       if (r < Math.floor(rows / 3)) {
-        const octopus = createOctopus();
-        alienMesh = octopus.mesh;
+          const octopus = createOctopus();
+          alienMesh = octopus.mesh;
+          alienMesh.userData = { 
+              pixelArt: octopus,
+              type: 'octopus',  // Explicitly set the type here
+              isDodging: false,
+              originalZ: 0
+          };
       } else if (r < Math.floor(rows * 2 / 3)) {
-        const crab = createCrab();
-        alienMesh = crab.mesh;
+          const crab = createCrab();
+          alienMesh = crab.mesh;
+          alienMesh.userData = {
+              pixelArt: crab,
+              type: 'crab',  // Explicitly set the type here
+              isDodging: false,
+              originalZ: 0
+          };
       } else {
-        const squid = createSquid();
-        alienMesh = squid.mesh;
+          const squid = createSquid();
+          alienMesh = squid.mesh;
+          alienMesh.userData = {
+              pixelArt: squid,
+              type: 'squid',  // Explicitly set the type here
+              isDodging: false,
+              originalZ: 0
+          };
       }
 
       alienMesh.position.set(
@@ -911,6 +1034,7 @@ function createBelt() {
         sounds.impact.currentTime = 0;
         sounds.impact.play();
         if (playerLives <= 0){
+          createExplosion(player.position.clone(), 0x30bdff, 100);
           gameOver = true;
           displayGameOverPopup();
           sounds.death.currentTime = 0;
@@ -924,21 +1048,31 @@ function createBelt() {
         const alienDist = Math.sqrt(Math.pow(asteroid.position.x - alien.position.x, 2) + Math.pow(asteroid.position.y - alien.position.y, 2));
         
         if (alienDist < 0.7) {
-            scene.remove(alien);
-            aliens.splice(j, 1);
-            sounds.impact.currentTime = 0;
-            sounds.impact.play();
-            if (asteroid.userData.sizeType === 'small') {
-                removeAsteroid(asteroid, launchedAsteroids, i);
-            } else if (asteroid.userData.sizeType === 'medium') {
-                const pos = asteroid.position.clone();
-                removeAsteroid(asteroid, launchedAsteroids, i);
-                createSplitAsteroid(pos, 'small', Math.PI/4);
-                createSplitAsteroid(pos, 'small', -Math.PI/4);
-            }
-            break;
+          // Determine explosion color based on alien type
+          let explosionColor;
+          switch(alien.userData.type) {  // Now checking the direct type property
+              case 'octopus': explosionColor = 0xffee00; break;
+              case 'crab': explosionColor = 0x08ffff; break;
+              case 'squid': explosionColor = 0xec20eb; break;
+              default: explosionColor = 0xff0000; break;
           }
+
+          createExplosion(alien.position.clone(), explosionColor, 20);
+          scene.remove(alien);
+          aliens.splice(j, 1);
+          sounds.impact.currentTime = 0;
+          sounds.impact.play();
+          if (asteroid.userData.sizeType === 'small') {
+              removeAsteroid(asteroid, launchedAsteroids, i);
+          } else if (asteroid.userData.sizeType === 'medium') {
+              const pos = asteroid.position.clone();
+              removeAsteroid(asteroid, launchedAsteroids, i);
+              createSplitAsteroid(pos, 'small', Math.PI/4);
+              createSplitAsteroid(pos, 'small', -Math.PI/4);
+          }
+          break;
         }
+      }
     }
 
     // Animate belt asteroids
@@ -982,85 +1116,86 @@ function createBelt() {
   }
   
   function removeAsteroid(asteroid, array, index) {
-    // Move asteroid far away before removal to prevent ghost collisions
+    // Only create particles for small asteroids
+    if (asteroid.userData.sizeType === 'small') {
+      createExplosion(asteroid.position.clone(), 0x802e47, 30); // Purple/maroon explosion
+    }
+    
+    // Move asteroid far away before removal
     asteroid.position.set(1000, 1000, 1000);
     scene.remove(asteroid);
     if (array && index !== undefined) {
-        array.splice(index, 1);
+      array.splice(index, 1);
     }
   }
   // New function to handle asteroid splitting
   function splitAsteroid(asteroid) {
     const position = asteroid.position.clone();
     const sizeType = asteroid.userData.sizeType;
-
+  
     // Remove the original asteroid first
     removeAsteroid(asteroid, launchedAsteroids);
     
-    // Only split if it's a large or medium asteroid
     if (sizeType === 'large') {
-        // Large splits into 2 medium
-        createSplitAsteroid(position, 'medium', Math.random() * Math.PI * 2);
-        createSplitAsteroid(position, 'medium', Math.random() * Math.PI * 2);
+      // Large splits into 2 medium (no particles)
+      createSplitAsteroid(position, 'medium', Math.random() * Math.PI * 2);
+      createSplitAsteroid(position, 'medium', Math.random() * Math.PI * 2);
     } else if (sizeType === 'medium') {
-        // Medium splits into 2 small
-        createSplitAsteroid(position, 'small', Math.random() * Math.PI * 2);
-        createSplitAsteroid(position, 'small', Math.random() * Math.PI * 2);
+      // Medium splits into 2 small (no particles)
+      createSplitAsteroid(position, 'small', Math.random() * Math.PI * 2);
+      createSplitAsteroid(position, 'small', Math.random() * Math.PI * 2);
     }
-    // Small asteroids don't split further
-}
+  }
 
   function createSplitAsteroid(position, sizeType, angle) {
-      const tierIndex = sizeType === 'small' ? 0 : (sizeType === 'medium' ? 1 : 2);
-      const tier = sizeTiers[tierIndex];
-      const size = tier.min + Math.random() * (tier.max - tier.min);
-
-      const geometry = tierIndex === 2 
-          ? new THREE.IcosahedronGeometry(size, 1) 
-          : new THREE.SphereGeometry(size, 8, 6);
-
-      const asteroid = new THREE.Mesh(geometry, attackMaterial);
-      asteroid.position.copy(position);
-
-      asteroid.rotation.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
-
-      // Random direction for fragments
-      const baseSpeed = sizeType === 'medium' ? 0.05 : 0.07;
-      const speedVariation = 0.7 + Math.random() * 0.6;
-
-      asteroid.userData = {
-          horizontalSpeed: Math.cos(angle) * baseSpeed * speedVariation,
-          verticalSpeed: -baseSpeed * (0.5 + Math.abs(Math.sin(angle)) * speedVariation),
-          rotationSpeed: 0.01 + Math.random() * 0.02,
-          sizeType: sizeType,
-          health: 1,
-          isFragment: true
-      };
-
-      scene.add(asteroid);
-      launchedAsteroids.push(asteroid);
+    const tierIndex = sizeType === 'small' ? 0 : (sizeType === 'medium' ? 1 : 2);
+    const tier = sizeTiers[tierIndex];
+    const size = tier.min + Math.random() * (tier.max - tier.min);
+    const geometry = tierIndex === 2 
+      ? new THREE.IcosahedronGeometry(size, 1) 
+      : new THREE.SphereGeometry(size, 8, 6);
+    
+    const asteroid = new THREE.Mesh(geometry, attackMaterial);
+    asteroid.position.copy(position);
+    
+    asteroid.rotation.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
+    
+    // Random direction for fragments
+    const baseSpeed = sizeType === 'medium' ? 0.05 : 0.07;
+    const speedVariation = 0.7 + Math.random() * 0.6;
+    
+    asteroid.userData = {
+      horizontalSpeed: Math.cos(angle) * baseSpeed * speedVariation,
+      verticalSpeed: -baseSpeed * (0.5 + Math.abs(Math.sin(angle)) * speedVariation),
+      rotationSpeed: 0.01 + Math.random() * 0.02,
+      sizeType: sizeType,
+      health: 1,
+      isFragment: true
+    };
+    
+    scene.add(asteroid);
+    launchedAsteroids.push(asteroid);
   }
 
   // Also update the checkAsteroidHit function to use the new splitAsteroid:
   function checkAsteroidHit(projectile) {
     for (let i = launchedAsteroids.length - 1; i >= 0; i--) {
-        const asteroid = launchedAsteroids[i];
-        
-        // Skip if asteroid is already being removed
-        if (asteroid.position.x === 1000) continue;
-        
-        const dist = Math.sqrt(
-            Math.pow(projectile.position.x - asteroid.position.x, 2) + 
-            Math.pow(projectile.position.y - asteroid.position.y, 2)
-        );
-        
-        if (dist < 0.5) {
-            scene.remove(projectile);
-            splitAsteroid(asteroid);
-            sounds.impact.currentTime = 0;
-            sounds.impact.play();
-            return true;
-        }
+      const asteroid = launchedAsteroids[i];
+      
+      if (asteroid.position.x === 1000) continue;
+      
+      const dist = Math.sqrt(
+        Math.pow(projectile.position.x - asteroid.position.x, 2) + 
+        Math.pow(projectile.position.y - asteroid.position.y, 2)
+      );
+      
+      if (dist < 0.5) {
+        scene.remove(projectile);
+        splitAsteroid(asteroid);
+        sounds.impact.currentTime = 0;
+        sounds.impact.play();
+        return true;
+      }
     }
     return false;
   }
