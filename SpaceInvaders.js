@@ -3,7 +3,10 @@ document.getElementById("playButton").addEventListener("click", () => {
 });
 
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createOctopus, createSquid, createCrab } from './models/enemys.js';
+
+window.THREE = THREE;
 
 let currentLevel = 1; 
 let enemyPhase = 1; 
@@ -58,11 +61,11 @@ async function loadShader(url) {
 }
 
 // Add this with your other utility functions
-function createExplosion(position, color, count = 50) {
+function createExplosion(position, color, count = 50, type = "normal") {
   const particlesGeometry = new THREE.BufferGeometry();
   const particlesMaterial = new THREE.PointsMaterial({
-    color: color,  // This should use the passed color
-    size: 0.1,
+    color: color,
+    size: type === "fire" ? 0.15 : 0.1, // Larger particles for fire
     transparent: true,
     opacity: 1,
     blending: THREE.AdditiveBlending
@@ -72,26 +75,45 @@ function createExplosion(position, color, count = 50) {
   const velocities = new Float32Array(count * 3);
   const opacities = new Float32Array(count);
   const sizes = new Float32Array(count);
+  const colors = new Float32Array(count * 3);
 
   for (let i = 0; i < count; i++) {
     // Initial positions (clustered around origin)
-    positions[i * 3] = (Math.random() - 0.5) * 0.5;
-    positions[i * 3 + 1] = (Math.random() - 0.5) * 0.5;
-    positions[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
+    positions[i * 3] = (Math.random() - 0.5) * (type === "fire" ? 1 : 0.5);
+    positions[i * 3 + 1] = (Math.random() - 0.5) * (type === "fire" ? 1 : 0.5);
+    positions[i * 3 + 2] = (Math.random() - 0.5) * (type === "fire" ? 1 : 0.5);
 
     // Random velocities (outward explosion)
-    velocities[i * 3] = (Math.random() - 0.5) * 0.2;
-    velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.2;
-    velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.2;
+    velocities[i * 3] = (Math.random() - 0.5) * (type === "fire" ? 0.05 : 0.2);
+    velocities[i * 3 + 1] = (Math.random() - 0.5) * (type === "fire" ? 0.05 : 0.2);
+    velocities[i * 3 + 2] = (Math.random() - 0.5) * (type === "fire" ? 0.05 : 0.2);
 
     opacities[i] = 1;
-    sizes[i] = 0.1 + Math.random() * 0.1;
+    sizes[i] = (type === "fire" ? 0.15 : 0.1) + Math.random() * 0.1;
+    
+    // Color handling
+    if (type === "fire") {
+      // Random color between red (0xff0000) and orange (0xffa500)
+      const r = 1.0;
+      const g = 0.4 + Math.random() * 0.5; // Range from 0.4 to 0.9 (red to orange)
+      const b = Math.random() * 0.2;
+      colors[i * 3] = r;
+      colors[i * 3 + 1] = g;
+      colors[i * 3 + 2] = b;
+    } else {
+      // Use the passed color for normal explosions
+      const hexColor = new THREE.Color(color);
+      colors[i * 3] = hexColor.r;
+      colors[i * 3 + 1] = hexColor.g;
+      colors[i * 3 + 2] = hexColor.b;
+    }
   }
 
   particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   particlesGeometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
   particlesGeometry.setAttribute('opacity', new THREE.BufferAttribute(opacities, 1));
   particlesGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+  particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
   const particles = new THREE.Points(particlesGeometry, particlesMaterial);
   particles.position.copy(position);
@@ -99,7 +121,9 @@ function createExplosion(position, color, count = 50) {
     lifetime: 0,
     velocities: velocities,
     opacities: opacities,
-    sizes: sizes
+    sizes: sizes,
+    type: type, // "normal" or "fire"
+    flickerInterval: Math.random() * 100 + 50 // For fire effect
   };
   
   scene.add(particles);
@@ -109,35 +133,60 @@ function createExplosion(position, color, count = 50) {
 
 // Add this with your other update functions
 function updateParticles() {
+  const now = Date.now();
+  
   for (let i = particleSystems.length - 1; i >= 0; i--) {
     const particles = particleSystems[i];
     const positions = particles.geometry.attributes.position.array;
     const velocities = particles.userData.velocities;
     const opacities = particles.userData.opacities;
     const sizes = particles.userData.sizes;
+    const colors = particles.geometry.attributes.color.array;
     
     particles.userData.lifetime += 16; // Assuming 60fps
     
-    // Update particle positions
-    for (let j = 0; j < positions.length; j += 3) {
-      positions[j] += velocities[j];
-      positions[j + 1] += velocities[j + 1];
-      positions[j + 2] += velocities[j + 2];
-    }
-    
-    // Fade out particles over time
-    const progress = particles.userData.lifetime / PARTICLE_LIFETIME;
-    for (let j = 0; j < opacities.length; j++) {
-      opacities[j] = 1 - progress;
-      sizes[j] *= 0.99;
+    if (particles.userData.type === "fire") {
+      // Special behavior for fire particles
+      for (let j = 0; j < positions.length; j += 3) {
+        // Slow movement with gravity effect
+        positions[j] += velocities[j] * 0.5;
+        positions[j + 1] += velocities[j + 1] * 0.5 - 0.01; // Gravity
+        positions[j + 2] += velocities[j + 2] * 0.5;
+        
+        // Flickering effect
+        if (now % particles.userData.flickerInterval < 16) {
+          colors[j + 1] = Math.min(1, colors[j + 1] * (0.9 + Math.random() * 0.2));
+        }
+      }
+      
+      // Slow fade for fire
+      const progress = particles.userData.lifetime / (PARTICLE_LIFETIME * 3);
+      for (let j = 0; j < opacities.length; j++) {
+        opacities[j] = 1 - progress * progress; // Quadratic fade
+        sizes[j] *= 0.998;
+      }
+    } else {
+      // Normal explosion behavior
+      for (let j = 0; j < positions.length; j += 3) {
+        positions[j] += velocities[j];
+        positions[j + 1] += velocities[j + 1];
+        positions[j + 2] += velocities[j + 2];
+      }
+      
+      const progress = particles.userData.lifetime / PARTICLE_LIFETIME;
+      for (let j = 0; j < opacities.length; j++) {
+        opacities[j] = 1 - progress;
+        sizes[j] *= 0.99;
+      }
     }
     
     particles.geometry.attributes.position.needsUpdate = true;
     particles.geometry.attributes.opacity.needsUpdate = true;
     particles.geometry.attributes.size.needsUpdate = true;
+    particles.geometry.attributes.color.needsUpdate = true;
     
     // Remove expired particles
-    if (particles.userData.lifetime >= PARTICLE_LIFETIME) {
+    if (particles.userData.lifetime >= (particles.userData.type === "fire" ? PARTICLE_LIFETIME * 3 : PARTICLE_LIFETIME)) {
       scene.remove(particles);
       particleSystems.splice(i, 1);
     }
@@ -327,13 +376,41 @@ async function startGame() {
   const light = new THREE.AmbientLight(0xffffff, 1.5);
   scene.add(light);
 
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+  directionalLight.position.set(0, 1, 1).normalize();
+  scene.add(directionalLight);
+
   // PLAYER SETUP
-  const playerGeometry = new THREE.BoxGeometry(1, 0.5, 0.5);
+  /*const playerGeometry = new THREE.BoxGeometry(1, 0.5, 0.5);
   const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
   player = new THREE.Mesh(playerGeometry, playerMaterial);
   player.position.y = -5;
   player.position.x = horizontalOffset; // apply horizontal offset
-  scene.add(player);
+  scene.add(player);*/
+  // PLAYER SETUP
+  const loader = new GLTFLoader();
+  try {
+    const gltf = await loader.loadAsync('models/spaceship.glb');
+    player = gltf.scene;
+    player.position.y = -5;
+    player.position.x = horizontalOffset;
+    player.scale.set(0.0025, 0.0025, 0.0025);
+    scene.add(player);
+
+    if (currentLevel === 1) {
+      player.rotation.set(-Math.PI/2, 0, Math.PI); // Rotate to face upwards
+    }
+    
+  } catch (error) {
+    console.error("Error loading spaceship:", error);
+    // Fallback to simple geometry
+    const playerGeometry = new THREE.BoxGeometry(1, 0.5, 0.5);
+    const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+    player = new THREE.Mesh(playerGeometry, playerMaterial);
+    player.position.y = -5;
+    player.position.x = horizontalOffset;
+    scene.add(player);
+  }
 
   projectiles = [];
   resetAliens();
@@ -380,6 +457,8 @@ async function startGame() {
     // Update Shader background continuously
     backgroundMaterial.uniforms.u_time.value += clock.getDelta();
 
+    updateParticles();
+
     if (!gameOver && asteroidBelt) {
       asteroidBelt.animate();
     }
@@ -421,8 +500,14 @@ async function startGame() {
           updateScoreBoard();
           sounds.impact.currentTime = 0;
           sounds.impact.play();
+          if (playerLives > 0) {
+            createExplosion(player.position.clone(), 0xffffff, 15);
+            createExplosion(player.position.clone(), 0xff0000, 15);
+          }
           if (playerLives <= 0) {
-            createExplosion(player.position.clone(), 0x30bdff, 100);
+            player.visible = false;
+            createExplosion(player.position.clone(), 0xff0000, 500, true);
+            createExplosion(player.position.clone(), 0xffffff, 500, true);
             gameOver = true;
             displayGameOverPopup();
             sounds.death.currentTime = 0;
@@ -673,21 +758,27 @@ function checkPlayerCollision() {
     const alien = aliens[i];
     const alienBox = new THREE.Box3().setFromObject(alien);
     
-    if (alienBox.intersectsBox(playerBox)) {
-      console.log("Player hit!");
-      playerLives--;
-      updateLivesDisplay();
-      sounds.impact.currentTime = 0;
-      sounds.impact.play();
-      if (playerLives <= 0) {
-        console.log("Game Over!");
-        createExplosion(player.position.clone(), 0x30bdff, 100);
-        gameOver = true;
-        displayGameOverPopup();
-        sounds.death.currentTime = 0;
-        sounds.death.play();
-      }
-      break;
+    if (playerLives <= 0) {
+      console.log("Game Over!");
+      /*
+      for (let i = 0; i < 5; i++) {
+        setTimeout(() => {
+          createExplosion(
+            player.position.clone().add(new THREE.Vector3(
+              (Math.random() - 0.5) * 0.5,
+              (Math.random() - 0.5) * 0.5,
+              (Math.random() - 0.5) * 0.5
+            )),
+            0xff0000, // Base color (will be overridden for fire)
+            100, // More particles
+            "fire" // Fire type
+          );
+        }, i * 100);
+      }*/
+      gameOver = true;
+      displayGameOverPopup();
+      sounds.death.currentTime = 0;
+      sounds.death.play();
     }
   }
 }
@@ -726,7 +817,13 @@ function displayGameOverPopup() {
   submitButton.onclick = function () {
     let playerName = input.innerText.replace(/\s+/g, ' ').trim();
     if (playerName === "") playerName = "???";
-    console.log("Player Name:", playerName);
+    
+    // Clear all particles before storing score and reloading
+    particleSystems.forEach(particles => {
+      scene.remove(particles);
+    });
+    particleSystems = [];
+    
     storeNewScore(playerName, points);
     location.reload();
   };
@@ -1033,6 +1130,10 @@ function createBelt() {
         removeAsteroid(asteroid, launchedAsteroids, i);
         sounds.impact.currentTime = 0;
         sounds.impact.play();
+        if (playerLives > 0) {
+          createExplosion(player.position.clone(), 0xffffff, 15);
+          createExplosion(player.position.clone(), 0xff0000, 15);
+        }
         if (playerLives <= 0){
           createExplosion(player.position.clone(), 0x30bdff, 100);
           gameOver = true;
