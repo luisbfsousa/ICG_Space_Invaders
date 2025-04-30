@@ -418,7 +418,8 @@ async function startGame() {
   const asteroidBelt = createBelt();
 
   // Load Shader Background
-  const fragmentShaderCode = await loadShader('/shaders/space.glsl');
+  const fragmentShaderCode = await loadShader('/shaders/space.txt');
+  //const fragmentShaderCode = await loadShader('/shaders/space.glsl');
   const backgroundScene = new THREE.Scene();
   const backgroundCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
   backgroundCamera.position.z = 1;
