@@ -4,6 +4,8 @@ import * as THREE from 'three';
 export class PixelArt {
   constructor(coordsPos1, coordsPos2, pixelSize, pixelSpacing, color, animationSpeed = 1000, animate = true) {
     this.mesh = new THREE.Group();
+    this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
     this.pixels = [];
     this.animationSpeed = animationSpeed;
     this.animate = animate;
@@ -14,24 +16,38 @@ export class PixelArt {
     this.pixelSpacing = pixelSpacing;
     this.color = color;
     
-    this.createPixels(coordsPos1, pixelSize, pixelSpacing, color);
+    // Shared material for better performance
+    this.pixelMaterial = new THREE.MeshStandardMaterial({ 
+      color,
+      roughness: 0.7,
+      metalness: 0.1
+    });
+    
+    this.createPixels(coordsPos1);
     
     if (this.animate) {
       this.animatePixels();
     }
   }
 
-  createPixels(coords, pixelSize, pixelSpacing, color) {
+  createPixels(coords) {
+    // Clear existing pixels
     this.mesh.children = [];
     this.pixels = [];
     
+    // Create individual boxes but reuse geometry and material
+    const geometry = new THREE.BoxGeometry(this.pixelSize, this.pixelSize, this.pixelSize);
+    
     coords.forEach(coord => {
-      const geometry = new THREE.BoxGeometry(pixelSize, pixelSize, pixelSize);
-      const material = new THREE.MeshStandardMaterial({ color });
-      const pixel = new THREE.Mesh(geometry, material);
+      const pixel = new THREE.Mesh(geometry, this.pixelMaterial);
+      pixel.position.set(
+        coord.x * (this.pixelSize + this.pixelSpacing),
+        -coord.y * (this.pixelSize + this.pixelSpacing),
+        0
+      );
       
-      pixel.position.x = coord.x * (pixelSize + pixelSpacing);
-      pixel.position.y = -coord.y * (pixelSize + pixelSpacing);
+      pixel.castShadow = true;
+      pixel.receiveShadow = true;
       
       this.mesh.add(pixel);
       this.pixels.push(pixel);
@@ -42,7 +58,7 @@ export class PixelArt {
     const now = Date.now();
     if (now - this.lastFrameTime > this.animationSpeed) {
       this.currentFrame = (this.currentFrame + 1) % this.frames.length;
-      this.createPixels(this.frames[this.currentFrame], this.pixelSize, this.pixelSpacing, this.color);
+      this.createPixels(this.frames[this.currentFrame]);
       this.lastFrameTime = now;
     }
     
