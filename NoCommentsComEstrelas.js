@@ -466,6 +466,36 @@ function updateShootingStars() {
   }
 }
 
+function createSphericalMoon() {
+  // Create high-quality sphere
+  const moonRadius = 30;
+  const moonGeometry = new THREE.SphereGeometry(moonRadius, 128, 128); // Increased segments for smoothness
+
+  // Load moon texture with higher quality settings
+  const moonTexture = new THREE.TextureLoader().load('images/moon_texture.jpg', (texture) => {
+    // These settings improve texture quality
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); // Max texture quality
+    texture.minFilter = THREE.LinearMipmapLinearFilter; // Better filtering
+    texture.magFilter = THREE.LinearFilter; // Better quality when zoomed
+    texture.needsUpdate = true;
+  });
+  
+  // Improved material settings
+  const moonMaterial = new THREE.MeshStandardMaterial({ 
+    map: moonTexture,
+    roughness: 0.9,
+    metalness: 0.1,
+    side: THREE.DoubleSide
+  });
+
+  const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+  moon.position.set(horizontalOffset, 0, -33);
+  moon.receiveShadow = true;
+  moon.castShadow = true;
+  
+  return moon;
+}
+
 async function startGame() {
   points = 0;
   playerLives = 100;
@@ -485,25 +515,8 @@ async function startGame() {
   const axesHelper = new THREE.AxesHelper(5);
   scene.add(axesHelper);
 
-  const floorGeometry = new THREE.PlaneGeometry(50, 50);
-  const floorTexture = new THREE.TextureLoader().load('images/moon_texture.jpg');
-  floorTexture.wrapS = THREE.RepeatWrapping;
-  floorTexture.wrapT = THREE.RepeatWrapping;
-  floorTexture.repeat.set(10, 10); // Adjust repeat for proper texture scaling
-  
-  const floorMaterial = new THREE.MeshStandardMaterial({ 
-      map: floorTexture,
-      roughness: 0.8,
-      metalness: 0.2,
-      side: THREE.DoubleSide // Important for visibility from both sides
-  });
-
-  const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-  floor.rotation.x = Math.PI ; // Rotate to be horizontal (was -PI/2)
-  floor.position.y = -10;
-  floor.position.z = -5; // Move back slightly to be behind the game box
-  floor.receiveShadow = true;
-  scene.add(floor);
+  const moon = createSphericalMoon();
+  scene.add(moon);
 
   renderer = new THREE.WebGLRenderer({ alpha: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
