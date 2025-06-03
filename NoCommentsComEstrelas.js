@@ -273,28 +273,9 @@ function toScreenPosition(obj, camera) {
 
 function updateLivesPosition() {
   const livesEl = document.getElementById('livesContainer');
-
-  if (currentLevel === 3) {
-    livesEl.style.position = 'fixed';
-    livesEl.style.left = '20px';
-    livesEl.style.top = '20px';
-  } else {
-    const canvasRect = renderer.domElement.getBoundingClientRect();
-  
-    const vector = new THREE.Vector3();
-    vector.copy(player.position);
-    vector.project(camera);
-  
-    const x = (vector.x + 1) / 2 * canvasRect.width + canvasRect.left;
-    const y = (-vector.y + 1) / 2 * canvasRect.height + canvasRect.top;
-  
-    const offsetX = 30;
-    const offsetY = -10;
-  
-    livesEl.style.position = 'absolute';
-    livesEl.style.left = (x + offsetX) + 'px';
-    livesEl.style.top = (y + offsetY) + 'px';
-  }
+  livesEl.style.position = 'fixed';
+  livesEl.style.left = '20px';
+  livesEl.style.top = '20px';
 }
 
 document.addEventListener("keydown", (event) => {

@@ -245,10 +245,12 @@ body.game-started {
      LIVES (near the ship in 3D)
   ---------------------------------- */
 .lives-container {
-    position: absolute;
+    position: fixed;
     color: yellow;
     font-family: 'Press Start 2P', cursive;
     font-size: 16px;
     z-index: 110;
     pointer-events: none;
-} 
+    left: 20px;
+    top: 20px;
+}
