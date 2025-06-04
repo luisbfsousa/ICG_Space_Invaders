@@ -660,7 +660,7 @@ function createSphericalMoon() {
   ).normalize();
   moon.userData.rotationAxis = rotationAxis;
 
-  const flagPaths = ['images/flag1.png', 'images/flag2.png', 'images/flag3.jpg', 'images/flag4.jpg'];
+  const flagPaths = ['images/flag1.png', 'images/flag2.png', 'images/flag3.jpg', 'images/flag4.jpg', 'images/flag5.jpg'];
   const loader = new THREE.TextureLoader();
 
   flagPaths.forEach((path) => {
