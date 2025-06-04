@@ -1,10 +1,12 @@
 document.getElementById("playButton").addEventListener("click", () => {
-  setTimeout(startGame, 1000);
+  setTimeout(startGame, 800);
 });
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createOctopus, createSquid, createCrab } from './models/enemys.js';
+import { createFullHeart } from './models/hearts.js';
+
 
 window.THREE = THREE;
 
@@ -41,8 +43,11 @@ const PLAYER_PROJECTILE_SPEED = 0.1;
 const PLAYER_PROJECTILE_RANGE = 7;
 
 let points = 0;
-let playerLives = 100;
+let playerLives = 3;
 let gameOver = false;
+
+let heartGroup;
+let uiScene, uiCamera;
 
 const sounds = {
   shoot: new Audio('sounds/shoot.mp3'),
@@ -252,10 +257,10 @@ function updateScoreBoard() {
   scoreBoard.innerHTML = `Score : ${points}`;
 }
 
-function updateLivesDisplay() {
-  const livesEl = document.getElementById("livesContainer");
-  livesEl.innerHTML = `Lifes: ${playerLives}`;
-}
+//function updateLivesDisplay() {
+//  const livesEl = document.getElementById("livesContainer");
+//  livesEl.innerHTML = `Lifes: ${playerLives}`;
+//}
 
 function toScreenPosition(obj, camera) {
   const vector = new THREE.Vector3();
@@ -271,12 +276,12 @@ function toScreenPosition(obj, camera) {
   return { x: vector.x, y: vector.y };
 }
 
-function updateLivesPosition() {
-  const livesEl = document.getElementById('livesContainer');
-  livesEl.style.position = 'fixed';
-  livesEl.style.left = '20px';
-  livesEl.style.top = '20px';
-}
+//function updateLivesPosition() {
+//  const livesEl = document.getElementById('livesContainer');
+//  livesEl.style.position = 'fixed';
+//  livesEl.style.left = '20px';
+//  livesEl.style.top = '20px';
+//}
 
 document.addEventListener("keydown", (event) => {
   keys[event.key.toLowerCase()] = true;
@@ -396,6 +401,13 @@ function createShootingStar() {
   shootingStars.push(shootingStarData);
 }
 
+function updateHeartDisplay() {
+  for (let i = 0; i < heartGroup.children.length; i++) {
+    heartGroup.children[i].visible = i < playerLives;
+  }
+}
+
+
 function updateShootingStars() {
   for (let i = shootingStars.length - 1; i >= 0; i--) {
     const starData = shootingStars[i];
@@ -479,16 +491,72 @@ function createSphericalMoon() {
 
 async function startGame() {
   points = 0;
-  playerLives = 100;
+  playerLives = 3;
   gameOver = false;
   updateScoreBoard();
 
-  const livesEl = document.getElementById("livesContainer");
-  livesEl.classList.remove("hidden");
-  updateLivesDisplay();
+  //const livesEl = document.getElementById("livesContainer");
+  //livesEl.classList.remove("hidden");
+  //updateLivesDisplay();
 
   scene = new THREE.Scene();
   scene.background = null;
+
+  scene = new THREE.Scene();
+  scene.background = null;
+
+  // UI Scene setup
+  uiScene = new THREE.Scene();
+  uiCamera = new THREE.OrthographicCamera(
+    -window.innerWidth / 2, window.innerWidth / 2,
+    window.innerHeight / 2, -window.innerHeight / 2,
+    0.1, 10
+  );
+  uiCamera.position.z = 1;
+
+  heartGroup = new THREE.Group();
+
+  // 2. Add 3 full hearts (1 heart = 1 life)
+  for (let i = 0; i < 3; i++) {
+    const heart = createFullHeart();
+    
+    // Position hearts horizontally with spacing
+    const spacing = 60; // pixels between hearts
+
+    for (let i = 0; i < 3; i++) {
+      const heart = createFullHeart();
+      heart.scale.setScalar(2.5);
+      heart.position.set(i * spacing, 0, 0);
+      heartGroup.add(heart);
+    } 
+    
+    heartGroup.add(heart);
+  }
+
+  // 3. Position the entire group in top-left
+  heartGroup.position.set(
+    -window.innerWidth / 2 + 20,  // increase from 100 to 160
+    window.innerHeight / 2 - 50, // push down slightly
+    -0.5
+  );
+
+
+  // 4. Add to UI scene
+  uiScene.add(heartGroup);
+
+  //const debugBox = new THREE.Mesh(
+  //  new THREE.BoxGeometry(200, 200, 1),
+  //  new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+  //);
+  //debugBox.position.set(0, 0, 0);
+  //heartGroup.add(debugBox);
+
+  // Confirm count in console
+  //console.log("Hearts in group:", heartGroup.children.length);
+
+  // Show/hide based on playerLives
+  updateHeartDisplay();
+
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   setCameraView();
@@ -499,7 +567,7 @@ async function startGame() {
   const moon = createSphericalMoon();
   scene.add(moon);
 
-  renderer = new THREE.WebGLRenderer({ alpha: true });
+  renderer = new THREE.WebGLRenderer({ alpha: true, preserveDrawingBuffer: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -640,7 +708,8 @@ async function startGame() {
           scene.remove(bullet);
           alienProjectiles.splice(i, 1);
           playerLives--;
-          updateLivesDisplay();
+          //updateLivesDisplay();
+          updateHeartDisplay();
           updateScoreBoard();
           sounds.impact.currentTime = 0;
           sounds.impact.play();
@@ -741,7 +810,7 @@ async function startGame() {
       updateAliens();
       checkPlayerCollision();
       checkLevelCompletion();
-      updateLivesPosition();
+      //updateLivesPosition();
     }
   
     if (isCameraTransitioning) {
@@ -776,6 +845,7 @@ async function startGame() {
     renderer.clear();
     renderer.render(backgroundScene, backgroundCamera);
     renderer.render(scene, camera);
+    renderer.render(uiScene, uiCamera);
   }  
 
   animate();
@@ -1215,7 +1285,8 @@ function createBelt() {
 
       if (playerDist < 0.8) {
         playerLives--;
-        updateLivesDisplay();
+        //updateLivesDisplay();
+        updateHeartDisplay();
         sounds.impact.currentTime = 0;
         sounds.impact.play();
         
