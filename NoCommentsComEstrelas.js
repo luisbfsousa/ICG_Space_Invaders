@@ -507,6 +507,8 @@ async function startGame() {
   gameOver = false;
   updateScoreBoard();
 
+  document.getElementById("changeCameraButton").classList.remove("hidden");
+
   //const livesEl = document.getElementById("livesContainer");
   //livesEl.classList.remove("hidden");
   //updateLivesDisplay();
@@ -1020,7 +1022,7 @@ function checkLevelCompletion() {
     alienProjectiles.forEach(proj => scene.remove(proj));
     alienProjectiles.length = 0;
 
-    currentLevel = (currentLevel % 3) + 1;
+    //currentLevel = (currentLevel % 3) + 1;
     
     if (enemyPhase < 5) {
       enemyPhase++;
@@ -1480,3 +1482,10 @@ document.addEventListener("keydown", (event) => {
     setCameraView();
   }
 });
+
+document.getElementById("changeCameraButton").addEventListener("click", (e) => {
+  e.currentTarget.blur();
+  currentLevel = (currentLevel % 3) + 1;
+  setCameraView();
+});
+

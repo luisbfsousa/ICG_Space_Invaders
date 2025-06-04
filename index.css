@@ -240,6 +240,35 @@ body.game-started {
     z-index: 100;
     font-size: 14px;
 }
+
+.change-camera-button {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background-color: yellow;
+  color: black;
+  font-family: 'Press Start 2P', cursive;
+  font-size: 14px;
+  padding: 10px 15px;
+  border: none;
+  cursor: pointer;
+  z-index: 101;
+  border-radius: 10px;      /* Smoother, more rounded corners */
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15); /* Soft shadow for depth */
+}
+
+.change-camera-button:hover {
+  background-color: orange;
+}
+
+.change-camera-button div {
+  font-size: 11px;
+  color: #333;
+  margin-top: 2px;
+  font-family: 'Press Start 2P', cursive;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+}
   
   /* ---------------------------------
      LIVES (near the ship in 3D)
