@@ -55,6 +55,8 @@ const planetSpawnInterval = 1000;
 const planetFrustum = new THREE.Frustum();
 const planetCamMatrix = new THREE.Matrix4();
 
+let cameraShakeOffset = new THREE.Vector3(0, 0, 0);
+
 const sounds = {
   shoot: new Audio('sounds/shoot.mp3'),
   impact: new Audio('sounds/impact.mp3'),
@@ -323,6 +325,27 @@ function createColoredPlanet(size = 1, color = 0xaaaaaa, hasRing = false) {
 
   return group;
 }
+
+function applyCameraShake(duration = 300, magnitude = 0.02) {
+  const shakeStartTime = Date.now();
+
+  function shake() {
+    const elapsed = Date.now() - shakeStartTime;
+    if (elapsed < duration) {
+      cameraShakeOffset.set(
+        (Math.random() - 0.5) * magnitude,
+        (Math.random() - 0.5) * magnitude,
+        (Math.random() - 0.5) * magnitude
+      );
+      setTimeout(shake, 16);
+    } else {
+      cameraShakeOffset.set(0, 0, 0);
+    }
+  }
+
+  shake();
+}
+
 
 function spawnRandomPlanet() {
   if (wanderingPlanets.length >= 5) return;
@@ -801,7 +824,7 @@ async function startGame() {
 
       if (currentLevel === 3 && !isCameraTransitioning) {
         const offset = new THREE.Vector3(0, 0.3, 0.5);
-        camera.position.copy(player.position.clone().add(offset));
+        camera.position.copy(player.position.clone().add(offset).add(cameraShakeOffset));
         const lookAt = player.position.clone().add(new THREE.Vector3(0, 500, 0));
         camera.lookAt(lookAt);
       }
@@ -834,6 +857,9 @@ async function startGame() {
             createExplosion(player.position.clone(), 0xffffff, 15);
             createExplosion(player.position.clone(), 0xff0000, 15);
           }
+          if (currentLevel === 3 && playerLives > 0) {
+            applyCameraShake();
+          }
           if (playerLives <= 0) {
             createExplosion(player.position.clone(), 0xff0000, 500, "fire");
             createExplosion(player.position.clone(), 0xffffff, 500, "fire");
@@ -856,12 +882,12 @@ async function startGame() {
         }
       }
 
-      if (currentLevel === 3 && !isCameraTransitioning) {
-        const offset = new THREE.Vector3(0, 0.3, 0.5);
-        camera.position.copy(player.position.clone().add(offset));
-        const lookAt = player.position.clone().add(new THREE.Vector3(0, 500, 0));
-        camera.lookAt(lookAt);
-      }
+      //if (currentLevel === 3 && !isCameraTransitioning) {
+      //  const offset = new THREE.Vector3(0, 0.3, 0.5);
+      //  camera.position.copy(player.position.clone().add(offset));
+      //  const lookAt = player.position.clone().add(new THREE.Vector3(0, 500, 0));
+      //  camera.lookAt(lookAt);
+      //}
       
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const playerBullet = projectiles[i];
@@ -1412,29 +1438,29 @@ function createBelt() {
         updateHeartDisplay();
         sounds.impact.currentTime = 0;
         sounds.impact.play();
-        
-        // Show hit effect at player position
+
         createExplosion(player.position.clone(), 0xffffff, 15);
         createExplosion(player.position.clone(), 0xff0000, 15);
-        
-        // Show asteroid destruction effect at asteroid position
+
+        if (currentLevel === 3 && playerLives > 0) {
+          applyCameraShake();
+        }
+
         createExplosion(asteroid.position.clone(), 0x802e47, 30);
-        
         removeAsteroid(asteroid, launchedAsteroids, i);
-        
+
         if (playerLives <= 0) {
-          // Show big death explosions
           createExplosion(player.position.clone(), 0xff0000, 500, "fire");
           createExplosion(player.position.clone(), 0xffffff, 500, "fire");
-          scene.remove(player); // <- fix for issue 2
+          scene.remove(player);
           player = null;
           gameOver = true;
           displayGameOverPopup();
           sounds.death.currentTime = 0;
           sounds.death.play();
         }
-        continue;
       }
+
       
       for (let j = aliens.length - 1; j >= 0; j--) {
         const alien = aliens[j];
