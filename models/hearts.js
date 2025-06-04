@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PixelHeart2 } from '../testes/pixelArt2.js';
+import { PixelHeart2 } from '../pixelArt2.js';
 
 function degToRad(degrees) {
   return degrees * (Math.PI / 180);
@@ -35,7 +35,6 @@ export function createFullHeart() {
   heart.add(left);
   heart.add(right);
 
-  // Disable shadows
   heart.traverse(child => {
     if (child.isMesh) {
       child.castShadow = false;
@@ -43,13 +42,11 @@ export function createFullHeart() {
     }
   });
 
-  // Center the heart geometry
   const box = new THREE.Box3().setFromObject(heart);
   const center = box.getCenter(new THREE.Vector3());
   heart.position.sub(center);
 
-  // Apply appropriate scale for UI display
-  //heart.scale.setScalar(10); // Not too big, not too small
+  //heart.scale.setScalar(10);
 
   return heart;
 }

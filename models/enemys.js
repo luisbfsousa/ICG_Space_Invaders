@@ -1,5 +1,4 @@
-// enemy.js
-import { PixelArt } from '../testes/pixelArt.js';
+import { PixelArt } from '../pixelArt.js';
 
 export function createOctopus() {
     const customCoordsPos1 = [
