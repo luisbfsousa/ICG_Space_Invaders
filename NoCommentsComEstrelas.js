@@ -57,6 +57,8 @@ const planetCamMatrix = new THREE.Matrix4();
 
 let cameraShakeOffset = new THREE.Vector3(0, 0, 0);
 
+const wavingFlags = [];
+
 const sounds = {
   shoot: new Audio('sounds/shoot.mp3'),
   impact: new Audio('sounds/impact.mp3'),
@@ -636,8 +638,6 @@ function createSphericalMoon() {
     texture.minFilter = THREE.LinearMipmapLinearFilter;
     texture.magFilter = THREE.LinearFilter;
     texture.needsUpdate = true;
-
-    // Force a render update if needed
     renderer.renderLists.dispose();
   });
 
@@ -653,13 +653,62 @@ function createSphericalMoon() {
   moon.receiveShadow = true;
   moon.castShadow = true;
 
-  // ✅ Assign the rotation axis *after* moon is defined
   const rotationAxis = new THREE.Vector3(
     Math.random() - 0.5,
     Math.random() - 0.5,
     Math.random() - 0.5
   ).normalize();
   moon.userData.rotationAxis = rotationAxis;
+
+  const flagPaths = ['images/flag1.png', 'images/flag2.png', 'images/flag3.jpg', 'images/flag4.jpg'];
+  const loader = new THREE.TextureLoader();
+
+  flagPaths.forEach((path) => {
+    const flagGroup = new THREE.Group();
+
+    const poleHeight = 1.5;
+    const poleGeom = new THREE.CylinderGeometry(0.03, 0.03, poleHeight, 8);
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
+    const pole = new THREE.Mesh(poleGeom, poleMat);
+    pole.position.y = poleHeight / 2;
+    flagGroup.add(pole);
+
+    const flagTexture = loader.load(path);
+    const flagMat = new THREE.MeshBasicMaterial({ map: flagTexture, transparent: true, side: THREE.DoubleSide });
+    const flagGeom = new THREE.PlaneGeometry(1, 0.6);
+    const flag = new THREE.Mesh(flagGeom, flagMat);
+
+    // Attach flag beside pole
+    flag.position.set(0.53, poleHeight - 0.3, 0);
+    flag.rotation.y = 0;
+
+    // 🌬️ Mark as waving flag
+    flag.userData.isWavingFlag = true;
+    flag.userData.waveStartTime = Math.random() * Math.PI * 2;
+    wavingFlags.push(flag);
+
+    flagGroup.add(flag);
+    flagGroup.scale.setScalar(0.6);
+
+    // 🎯 Position on visible front side of moon
+    const theta = Math.random() * Math.PI; // front hemisphere
+    const phi = Math.PI / 2 + (Math.random() - 0.5) * 0.4; // equator-ish
+
+    const normal = new THREE.Vector3(
+      Math.sin(phi) * Math.cos(theta),
+      Math.cos(phi),
+      Math.sin(phi) * Math.sin(theta)
+    );
+
+    const surfacePoint = normal.clone().multiplyScalar(moonRadius + 0.01);
+    flagGroup.position.copy(surfacePoint);
+
+    const up = new THREE.Vector3(0, 1, 0);
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
+    flagGroup.quaternion.copy(quaternion);
+
+    moon.add(flagGroup);
+  });
 
   return moon;
 }
@@ -724,8 +773,8 @@ async function startGame() {
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   setCameraView();
 
-  const axesHelper = new THREE.AxesHelper(5);
-  scene.add(axesHelper);
+  //const axesHelper = new THREE.AxesHelper(5);
+  //scene.add(axesHelper);
 
   const moon = createSphericalMoon();
   scene.add(moon);
@@ -837,6 +886,14 @@ async function startGame() {
     updateShootingStars();
     createShootingStar();
 
+    const time = performance.now() * 0.002;
+    wavingFlags.forEach(flag => {
+      const waveSpeed = 2;
+      const waveAmount = 0.08;
+      flag.rotation.z = Math.sin(time + flag.userData.waveStartTime) * waveAmount;
+    });
+
+
     if (Date.now() - lastPlanetSpawnTime > planetSpawnInterval) {
       spawnRandomPlanet();
       lastPlanetSpawnTime = Date.now();
@@ -867,7 +924,7 @@ async function startGame() {
 
     if (moon) {
       const axis = moon.userData.rotationAxis;
-      moon.rotateOnAxis(axis, 0.001); // adjust speed if needed
+      moon.rotateOnAxis(axis, 0.005); // adjust speed if needed
     }
 
     if (!gameOver && asteroidBelt) {
