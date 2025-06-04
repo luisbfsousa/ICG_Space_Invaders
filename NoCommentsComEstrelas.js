@@ -118,6 +118,7 @@ function createExplosion(position, color, count = 50, type = "normal") {
   particles.position.copy(position);
   particles.userData = {
     lifetime: 0,
+    maxLifetime: type === "fire" ? PARTICLE_LIFETIME * 8 : PARTICLE_LIFETIME,
     velocities: velocities,
     opacities: opacities,
     sizes: sizes,
@@ -154,10 +155,10 @@ function updateParticles() {
         }
       }
       
-      const progress = particles.userData.lifetime / (PARTICLE_LIFETIME * 3);
+      const progress = particles.userData.lifetime / (PARTICLE_LIFETIME * 12);
       for (let j = 0; j < opacities.length; j++) {
         opacities[j] = 1 - progress * progress;
-        sizes[j] *= 0.998;
+        sizes[j] *= 0.999;
       }
     } else {
       for (let j = 0; j < positions.length; j += 3) {
@@ -178,7 +179,7 @@ function updateParticles() {
     particles.geometry.attributes.size.needsUpdate = true;
     particles.geometry.attributes.color.needsUpdate = true;
     
-    if (particles.userData.lifetime >= (particles.userData.type === "fire" ? PARTICLE_LIFETIME * 3 : PARTICLE_LIFETIME)) {
+    if (particles.userData.lifetime >= particles.userData.maxLifetime) {
       scene.remove(particles);
       particleSystems.splice(i, 1);
     }
@@ -296,49 +297,46 @@ document.addEventListener("keyup", (event) => {
 
 function createShootingStar() {
   const now = Date.now();
-  if (now - lastShootingStarTime < shootingStarInterval || shootingStars.length > 0) return;
+  if (now - lastShootingStarTime < 1000 || shootingStars.length > 0) return;
   lastShootingStarTime = now;
 
   const fixedZ = 4;
-  const startX = (Math.random() * 50 - 25) + horizontalOffset;
+  const startX = (Math.random() * 20 - 10) + horizontalOffset; // wider X range
   const startY = 35;
-  const endX = (Math.random() * 50 - 25) + horizontalOffset;
-  const endY = -15;
+  const midX = startX + (Math.random() * 8 - 4);
+  const playerY = player?.position?.y || -5;
+  const endX = startX + (Math.random() * 10 - 5);
+  const endY = -20; // Behind player
 
   const curve = new THREE.QuadraticBezierCurve3(
     new THREE.Vector3(startX, startY, fixedZ),
-    new THREE.Vector3((startX + endX)/2 + (Math.random()*15-7.5), 15, fixedZ),
+    new THREE.Vector3(midX, playerY, fixedZ),
     new THREE.Vector3(endX, endY, fixedZ)
   );
 
-  const points = curve.getPoints(50);
-  
-  // Create dashed line for the full path
-  const dashedMaterial = new THREE.LineDashedMaterial({
-    color: 0x88ccff,
-    dashSize: 0.5,
-    gapSize: 0.3,
-    linewidth: 1,
-    transparent: true,
-    opacity: 0.5
-  });
-  
-  const fullPathGeometry = new THREE.BufferGeometry().setFromPoints(points);
-  const fullPath = new THREE.Line(fullPathGeometry, dashedMaterial);
+  const points = curve.getPoints(70);
+
+  const fullPath = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(points),
+    new THREE.LineDashedMaterial({
+      color: 0x88ccff,
+      dashSize: 0.5,
+      gapSize: 0.3,
+      linewidth: 1,
+      transparent: true,
+      opacity: 0.5
+    })
+  );
   fullPath.computeLineDistances();
   scene.add(fullPath);
 
-  // Create the moving star with stronger light and shadows
-  const starLight = new THREE.PointLight(0xfff4e6, 500, 60, 2.5);
+  const starLight = new THREE.PointLight(0xfff4e6, 0, 50, 2.5);
   starLight.position.set(startX, startY, fixedZ);
   starLight.castShadow = true;
   starLight.shadow.mapSize.width = 1024;
   starLight.shadow.mapSize.height = 1024;
-  starLight.shadow.camera.near = 0.5;
-  starLight.shadow.camera.far = 100;
-  starLight.shadow.bias = -0.001;
-  starLight.shadow.radius = 2;
-  starLight.shadow.darkness = 0.7; // Darker shadows
+  starLight.shadow.bias = -0.003;
+  starLight.shadow.radius = 5;
   scene.add(starLight);
 
   const star = new THREE.Mesh(
@@ -346,9 +344,11 @@ function createShootingStar() {
     new THREE.MeshStandardMaterial({
       color: 0xfff4e6,
       emissive: 0xfff4e6,
-      emissiveIntensity: 2,
+      emissiveIntensity: 0,
       roughness: 0.1,
-      metalness: 0.5
+      metalness: 0.5,
+      transparent: true,
+      opacity: 0
     })
   );
   star.position.set(startX, startY, fixedZ);
@@ -356,50 +356,107 @@ function createShootingStar() {
   star.receiveShadow = true;
   scene.add(star);
 
-  // Create a directional light that follows the star for stronger directional shadows
-  const directionalLight = new THREE.DirectionalLight(0xfff4e6, 1.5);
-  directionalLight.position.set(startX, startY, fixedZ + 5); // Positioned slightly behind the star
+  const directionalLight = new THREE.DirectionalLight(0xfff4e6, 2.5);
+  directionalLight.position.set(startX, startY, fixedZ + 5);
   directionalLight.target.position.set(startX, startY, fixedZ);
   directionalLight.castShadow = true;
   directionalLight.shadow.mapSize.width = 2048;
   directionalLight.shadow.mapSize.height = 2048;
-  directionalLight.shadow.camera.near = 0.5;
-  directionalLight.shadow.camera.far = 100;
-  directionalLight.shadow.camera.left = -20;
-  directionalLight.shadow.camera.right = 20;
-  directionalLight.shadow.camera.top = 20;
-  directionalLight.shadow.camera.bottom = -20;
-  directionalLight.shadow.bias = -0.001;
-  directionalLight.shadow.radius = 3;
-  directionalLight.shadow.darkness = 0.8;
+  directionalLight.shadow.bias = -0.002;
+  directionalLight.shadow.radius = 6;
   scene.add(directionalLight);
   scene.add(directionalLight.target);
 
-  // Trail geometry
-  const trailGeometry = new THREE.BufferGeometry();
-  const trailMaterial = new THREE.LineBasicMaterial({
-    color: 0x88ccff,
-    transparent: true,
-    opacity: 0.7,
-    linewidth: 1.5
-  });
-  const trail = new THREE.Line(trailGeometry, trailMaterial);
+  const trail = new THREE.Line(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({
+      color: 0x88ccff,
+      transparent: true,
+      opacity: 0.7,
+      linewidth: 1.5
+    })
+  );
   scene.add(trail);
 
-  const shootingStarData = {
+  shootingStars.push({
     light: starLight,
-    directionalLight: directionalLight, // Store the directional light
-    star: star,
-    trail: trail,
-    fullPath: fullPath,
-    points: points,
+    directionalLight,
+    star,
+    trail,
+    fullPath,
+    points,
     currentPoint: 0,
-    speed: 0.1 + Math.random() * 0.05,
-    maxIntensity: 500
-  };
-
-  shootingStars.push(shootingStarData);
+    speed: 0.12 + Math.random() * 0.04,
+    maxIntensity: 200
+  });
 }
+
+
+function updateShootingStars() {
+  let spawnNext = false;
+
+  for (let i = shootingStars.length - 1; i >= 0; i--) {
+    const starData = shootingStars[i];
+    starData.currentPoint += starData.speed;
+
+    if (starData.currentPoint >= starData.points.length) {
+      scene.remove(
+        starData.light,
+        starData.directionalLight,
+        starData.directionalLight.target,
+        starData.star,
+        starData.trail,
+        starData.fullPath
+      );
+      shootingStars.splice(i, 1);
+      spawnNext = true;
+      continue;
+    }
+
+    const pointIndex = Math.min(Math.floor(starData.currentPoint), starData.points.length - 1);
+    const progress = starData.currentPoint - pointIndex;
+    const position = starData.points[pointIndex].clone().lerp(
+      starData.points[Math.min(pointIndex + 1, starData.points.length - 1)],
+      progress
+    );
+
+    starData.light.position.copy(position);
+    starData.directionalLight.position.copy(position.clone().add(new THREE.Vector3(0, 0, 5)));
+    starData.directionalLight.target.position.copy(position);
+    starData.star.position.copy(position);
+
+    const trailPoints = starData.points.slice(Math.max(0, pointIndex - 10), pointIndex + 1);
+    trailPoints.push(position.clone());
+    starData.trail.geometry.dispose();
+    starData.trail.geometry = new THREE.BufferGeometry().setFromPoints(trailPoints);
+
+    const progressRatio = starData.currentPoint / starData.points.length;
+    starData.fullPath.material.opacity = 0.3 * (1 - progressRatio);
+
+    const totalDist = starData.points[0].distanceTo(starData.points[starData.points.length - 1]);
+    const curDist = starData.points[0].distanceTo(position);
+    const fadeInDist = 12, fadeOutDist = 12;
+
+    let fadeFactor = 1.0;
+    if (curDist < fadeInDist) {
+      fadeFactor = curDist / fadeInDist;
+    } else if (totalDist - curDist < fadeOutDist) {
+      fadeFactor = (totalDist - curDist) / fadeOutDist;
+    }
+
+    starData.light.intensity = starData.maxIntensity * fadeFactor;
+    starData.directionalLight.intensity = 0;
+    starData.star.material.emissiveIntensity = 1.5 * fadeFactor;
+    starData.star.material.opacity = fadeFactor;
+  }
+
+  if (spawnNext) lastShootingStarTime = Date.now();
+
+  if (shootingStars.length === 0 && Date.now() - lastShootingStarTime >= 1000) {
+    createShootingStar();
+  }
+}
+
 
 function updateHeartDisplay() {
   for (let i = 0; i < heartGroup.children.length; i++) {
@@ -407,73 +464,20 @@ function updateHeartDisplay() {
   }
 }
 
-
-function updateShootingStars() {
-  for (let i = shootingStars.length - 1; i >= 0; i--) {
-    const starData = shootingStars[i];
-    starData.currentPoint += starData.speed;
-
-    if (starData.currentPoint >= starData.points.length) {
-      // Clean up all elements when animation is complete
-      scene.remove(starData.light);
-      scene.remove(starData.directionalLight);
-      scene.remove(starData.directionalLight.target);
-      scene.remove(starData.star);
-      scene.remove(starData.trail);
-      scene.remove(starData.fullPath);
-      shootingStars.splice(i, 1);
-      continue;
-    }
-
-    const pointIndex = Math.min(Math.floor(starData.currentPoint), starData.points.length - 1);
-    const progress = starData.currentPoint - pointIndex;
-    
-    const position = starData.points[pointIndex].clone().lerp(
-      starData.points[Math.min(pointIndex + 1, starData.points.length - 1)],
-      progress
-    );
-
-    // Update positions of all star elements
-    starData.light.position.copy(position);
-    starData.directionalLight.position.copy(position.clone().add(new THREE.Vector3(0, 0, 5)));
-    starData.directionalLight.target.position.copy(position);
-    starData.star.position.copy(position);
-
-    // Update trail
-    const trailStart = Math.max(0, pointIndex - 10);
-    const trailPoints = starData.points.slice(trailStart, pointIndex + 1);
-    trailPoints.push(position.clone());
-    
-    const trailGeometry = new THREE.BufferGeometry().setFromPoints(trailPoints);
-    starData.trail.geometry.dispose();
-    starData.trail.geometry = trailGeometry;
-
-    // Update full path opacity
-    const progressRatio = starData.currentPoint / starData.points.length;
-    starData.fullPath.material.opacity = 0.3 * (1 - progressRatio);
-
-    // Adjust light intensity based on position (brighter when higher)
-    const heightFactor = Math.max(0, position.y / 35);
-    starData.light.intensity = starData.maxIntensity * (0.5 + heightFactor * 0.5);
-    starData.directionalLight.intensity = 1.5 * (0.5 + heightFactor * 0.5);
-  }
-}
-
 function createSphericalMoon() {
-  // Create high-quality sphere
   const moonRadius = 30;
-  const moonGeometry = new THREE.SphereGeometry(moonRadius, 128, 128); // Increased segments for smoothness
+  const moonGeometry = new THREE.SphereGeometry(moonRadius, 128, 128);
 
-  // Load moon texture with higher quality settings
   const moonTexture = new THREE.TextureLoader().load('images/moon_texture.jpg', (texture) => {
-    // These settings improve texture quality
-    texture.anisotropy = renderer.capabilities.getMaxAnisotropy(); // Max texture quality
-    texture.minFilter = THREE.LinearMipmapLinearFilter; // Better filtering
-    texture.magFilter = THREE.LinearFilter; // Better quality when zoomed
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
     texture.needsUpdate = true;
+
+    // Force a render update if needed
+    renderer.renderLists.dispose();
   });
-  
-  // Improved material settings
+
   const moonMaterial = new THREE.MeshStandardMaterial({ 
     map: moonTexture,
     roughness: 0.9,
@@ -485,7 +489,15 @@ function createSphericalMoon() {
   moon.position.set(horizontalOffset, 0, -33);
   moon.receiveShadow = true;
   moon.castShadow = true;
-  
+
+  // ✅ Assign the rotation axis *after* moon is defined
+  const rotationAxis = new THREE.Vector3(
+    Math.random() - 0.5,
+    Math.random() - 0.5,
+    Math.random() - 0.5
+  ).normalize();
+  moon.userData.rotationAxis = rotationAxis;
+
   return moon;
 }
 
@@ -505,7 +517,6 @@ async function startGame() {
   scene = new THREE.Scene();
   scene.background = null;
 
-  // UI Scene setup
   uiScene = new THREE.Scene();
   uiCamera = new THREE.OrthographicCamera(
     -window.innerWidth / 2, window.innerWidth / 2,
@@ -516,12 +527,9 @@ async function startGame() {
 
   heartGroup = new THREE.Group();
 
-  // 2. Add 3 full hearts (1 heart = 1 life)
   for (let i = 0; i < 3; i++) {
     const heart = createFullHeart();
-    
-    // Position hearts horizontally with spacing
-    const spacing = 60; // pixels between hearts
+    const spacing = 60;
 
     for (let i = 0; i < 3; i++) {
       const heart = createFullHeart();
@@ -533,15 +541,8 @@ async function startGame() {
     heartGroup.add(heart);
   }
 
-  // 3. Position the entire group in top-left
-  heartGroup.position.set(
-    -window.innerWidth / 2 + 20,  // increase from 100 to 160
-    window.innerHeight / 2 - 50, // push down slightly
-    -0.5
-  );
+  heartGroup.position.set(-window.innerWidth / 2 + 20,window.innerHeight / 2 - 50,-0.5);
 
-
-  // 4. Add to UI scene
   uiScene.add(heartGroup);
 
   //const debugBox = new THREE.Mesh(
@@ -551,18 +552,15 @@ async function startGame() {
   //debugBox.position.set(0, 0, 0);
   //heartGroup.add(debugBox);
 
-  // Confirm count in console
   //console.log("Hearts in group:", heartGroup.children.length);
 
-  // Show/hide based on playerLives
   updateHeartDisplay();
-
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   setCameraView();
 
-  const axesHelper = new THREE.AxesHelper(5);
-  scene.add(axesHelper);
+  //const axesHelper = new THREE.AxesHelper(5);
+  //scene.add(axesHelper);
 
   const moon = createSphericalMoon();
   scene.add(moon);
@@ -674,6 +672,11 @@ async function startGame() {
     updateShootingStars();
     createShootingStar();
 
+    if (moon) {
+      const axis = moon.userData.rotationAxis;
+      moon.rotateOnAxis(axis, 0.001); // adjust speed if needed
+    }
+
     if (!gameOver && asteroidBelt) {
       asteroidBelt.animate();
     }
@@ -718,9 +721,10 @@ async function startGame() {
             createExplosion(player.position.clone(), 0xff0000, 15);
           }
           if (playerLives <= 0) {
-            player.visible = false;
-            createExplosion(player.position.clone(), 0xff0000, 500, true);
-            createExplosion(player.position.clone(), 0xffffff, 500, true);
+            createExplosion(player.position.clone(), 0xff0000, 500, "fire");
+            createExplosion(player.position.clone(), 0xffffff, 500, "fire");
+            scene.remove(player);
+            player = null;
             gameOver = true;
             displayGameOverPopup();
             sounds.death.currentTime = 0;
@@ -1301,8 +1305,10 @@ function createBelt() {
         
         if (playerLives <= 0) {
           // Show big death explosions
-          createExplosion(player.position.clone(), 0xff0000, 500, true);
-          createExplosion(player.position.clone(), 0xffffff, 500, true);
+          createExplosion(player.position.clone(), 0xff0000, 500, "fire");
+          createExplosion(player.position.clone(), 0xffffff, 500, "fire");
+          scene.remove(player); // <- fix for issue 2
+          player = null;
           gameOver = true;
           displayGameOverPopup();
           sounds.death.currentTime = 0;
