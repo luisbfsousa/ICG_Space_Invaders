@@ -263,6 +263,10 @@ function updateScoreBoard() {
 //  livesEl.innerHTML = `Lifes: ${playerLives}`;
 //}
 
+function allAliensInPosition() {
+  return aliens.every(alien => alien.userData.targetX === undefined);
+}
+
 function toScreenPosition(obj, camera) {
   const vector = new THREE.Vector3();
   const widthHalf = window.innerWidth / 2;
@@ -631,7 +635,7 @@ async function startGame() {
 
   projectiles = [];
   resetAliens();
-  createGameBox();
+  //createGameBox();
   const asteroidBelt = createBelt();
 
   const fragmentShaderCode = await loadShader('space.txt');
@@ -814,6 +818,17 @@ async function startGame() {
       }
   
       updateAliens();
+      aliens.forEach(alien => {
+        if (alien.userData.targetX !== undefined) {
+          alien.position.x = THREE.MathUtils.lerp(alien.position.x, alien.userData.targetX, 0.05);
+          if (Math.abs(alien.position.x - alien.userData.targetX) < 0.05) {
+            alien.position.x = alien.userData.targetX;
+            delete alien.userData.targetX;
+          }
+        }
+      });
+
+
       checkPlayerCollision();
       checkLevelCompletion();
       //updateLivesPosition();
@@ -927,6 +942,8 @@ function alienShoot(alien) {
 }
 
 function updateAliens() {
+  if (!allAliensInPosition()) return;
+
   const now = Date.now();
   if (now - lastAlienMoveTime < alienMoveDelay) return;
   lastAlienMoveTime = now;
@@ -940,6 +957,7 @@ function updateAliens() {
       hitBoundary = true;
     }
   });
+
   if (hitBoundary) {
     aliens.forEach(alien => {
       alien.position.y -= verticalStep;
@@ -1119,11 +1137,14 @@ function resetAliens() {
           alienMesh.receiveShadow = true;
       }
 
+      const finalX = (c - cols / 2) * alienSpacing + horizontalOffset;
+      const finalY = baseYOffset - (r * alienSpacing * 0.8);
       alienMesh.position.set(
-        (c - cols / 2) * alienSpacing + horizontalOffset,
-        baseYOffset - (r * alienSpacing * 0.8),
+        Math.random() < 0.5 ? -30 : 30, // spawn from left or right
+        finalY,
         0
       );
+      alienMesh.userData.targetX = finalX;
       
       alienMesh.scale.set(0.1, 0.1, 0.1);
       alienMesh.castShadow = true;
@@ -1166,18 +1187,6 @@ function resetAliens() {
       setTimeout(shootRandomly, 1000 + Math.random() * 2000);
     }
   }
-}
-
-function createGameBox() {
-  const boxWidth = 22;
-  const boxHeight = 16;
-  const boxDepth = 1;
-  const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
-  const edges = new THREE.EdgesGeometry(boxGeometry);
-  const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
-  const gameBox = new THREE.LineSegments(edges, lineMaterial);
-  gameBox.position.set(horizontalOffset, 0, -1);
-  scene.add(gameBox);
 }
 
 function createBelt() {
@@ -1475,6 +1484,18 @@ function createBelt() {
 
 prefillLeaderboard();
 updateLeaderboard();
+
+//function createGameBox() {
+//  const boxWidth = 22;
+//  const boxHeight = 16;
+//  const boxDepth = 1;
+//  const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+//  const edges = new THREE.EdgesGeometry(boxGeometry);
+//  const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
+//  const gameBox = new THREE.LineSegments(edges, lineMaterial);
+//  gameBox.position.set(horizontalOffset, 0, -1);
+//  scene.add(gameBox);
+//}
 
 document.addEventListener("keydown", (event) => {
   if (event.key.toLowerCase() === "p") {
