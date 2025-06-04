@@ -1,10 +1,12 @@
 document.getElementById("playButton").addEventListener("click", () => {
-  setTimeout(startGame, 1000);
+  setTimeout(startGame, 800);
 });
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createOctopus, createSquid, createCrab } from './models/enemys.js';
+import { createFullHeart } from './models/hearts.js';
+
 
 window.THREE = THREE;
 
@@ -18,6 +20,9 @@ let playAreaLimit = 11;
 let playerSpeed = 0.1;
 const keys = {};
 let alienProjectiles = [];
+let shootingStars = [];
+let lastShootingStarTime = 0;
+const shootingStarInterval = 10000;
 
 const horizontalOffset = -2; 
 
@@ -28,20 +33,31 @@ let cameraTargetPosition = new THREE.Vector3();
 let cameraTargetLookAt = new THREE.Vector3();
 let isCameraTransitioning = false;
 
-// Global variables for discrete alien movement
-let alienDirection = 1;         // 1 means moving right, -1 means left
+let alienDirection = 1;
 let lastAlienMoveTime = Date.now();
-const alienMoveDelay = 1000;    // ms between moves
+const alienMoveDelay = 1000;
 const horizontalStep = 1;
 const verticalStep = 1;
 
-const PLAYER_PROJECTILE_SPEED = 0.1;  // Increased from 0.1
-const PLAYER_PROJECTILE_RANGE = 7;   // Increased from 5
+const PLAYER_PROJECTILE_SPEED = 0.1;
+const PLAYER_PROJECTILE_RANGE = 7;
 
-// Global game scoring and lives
 let points = 0;
 let playerLives = 3;
 let gameOver = false;
+
+let heartGroup;
+let uiScene, uiCamera;
+
+const wanderingPlanets = [];
+let lastPlanetSpawnTime = 0;
+const planetSpawnInterval = 1000;
+const planetFrustum = new THREE.Frustum();
+const planetCamMatrix = new THREE.Matrix4();
+
+let cameraShakeOffset = new THREE.Vector3(0, 0, 0);
+
+const wavingFlags = [];
 
 const sounds = {
   shoot: new Audio('sounds/shoot.mp3'),
@@ -49,10 +65,9 @@ const sounds = {
   death: new Audio('sounds/death.mp3')
 };
 
-// Preload and configure sounds
 Object.values(sounds).forEach(sound => {
   sound.preload = 'auto';
-  sound.volume = 0.5; // Adjust volume as needed
+  sound.volume = 0.5;
 });
 
 async function loadShader(url) {
@@ -60,12 +75,11 @@ async function loadShader(url) {
   return response.text();
 }
 
-// Add this with your other utility functions
 function createExplosion(position, color, count = 50, type = "normal") {
   const particlesGeometry = new THREE.BufferGeometry();
   const particlesMaterial = new THREE.PointsMaterial({
     color: color,
-    size: type === "fire" ? 0.15 : 0.1, // Larger particles for fire
+    size: type === "fire" ? 0.15 : 0.1,
     transparent: true,
     opacity: 1,
     blending: THREE.AdditiveBlending
@@ -78,12 +92,10 @@ function createExplosion(position, color, count = 50, type = "normal") {
   const colors = new Float32Array(count * 3);
 
   for (let i = 0; i < count; i++) {
-    // Initial positions (clustered around origin)
     positions[i * 3] = (Math.random() - 0.5) * (type === "fire" ? 1 : 0.5);
     positions[i * 3 + 1] = (Math.random() - 0.5) * (type === "fire" ? 1 : 0.5);
     positions[i * 3 + 2] = (Math.random() - 0.5) * (type === "fire" ? 1 : 0.5);
 
-    // Random velocities (outward explosion)
     velocities[i * 3] = (Math.random() - 0.5) * (type === "fire" ? 0.05 : 0.2);
     velocities[i * 3 + 1] = (Math.random() - 0.5) * (type === "fire" ? 0.05 : 0.2);
     velocities[i * 3 + 2] = (Math.random() - 0.5) * (type === "fire" ? 0.05 : 0.2);
@@ -91,17 +103,14 @@ function createExplosion(position, color, count = 50, type = "normal") {
     opacities[i] = 1;
     sizes[i] = (type === "fire" ? 0.15 : 0.1) + Math.random() * 0.1;
     
-    // Color handling
     if (type === "fire") {
-      // Random color between red (0xff0000) and orange (0xffa500)
       const r = 1.0;
-      const g = 0.4 + Math.random() * 0.5; // Range from 0.4 to 0.9 (red to orange)
+      const g = 0.4 + Math.random() * 0.5;
       const b = Math.random() * 0.2;
       colors[i * 3] = r;
       colors[i * 3 + 1] = g;
       colors[i * 3 + 2] = b;
     } else {
-      // Use the passed color for normal explosions
       const hexColor = new THREE.Color(color);
       colors[i * 3] = hexColor.r;
       colors[i * 3 + 1] = hexColor.g;
@@ -119,11 +128,12 @@ function createExplosion(position, color, count = 50, type = "normal") {
   particles.position.copy(position);
   particles.userData = {
     lifetime: 0,
+    maxLifetime: type === "fire" ? PARTICLE_LIFETIME * 8 : PARTICLE_LIFETIME,
     velocities: velocities,
     opacities: opacities,
     sizes: sizes,
-    type: type, // "normal" or "fire"
-    flickerInterval: Math.random() * 100 + 50 // For fire effect
+    type: type,
+    flickerInterval: Math.random() * 100 + 50
   };
   
   scene.add(particles);
@@ -131,7 +141,6 @@ function createExplosion(position, color, count = 50, type = "normal") {
   return particles;
 }
 
-// Add this with your other update functions
 function updateParticles() {
   const now = Date.now();
   
@@ -143,30 +152,25 @@ function updateParticles() {
     const sizes = particles.userData.sizes;
     const colors = particles.geometry.attributes.color.array;
     
-    particles.userData.lifetime += 16; // Assuming 60fps
+    particles.userData.lifetime += 16;
     
     if (particles.userData.type === "fire") {
-      // Special behavior for fire particles
       for (let j = 0; j < positions.length; j += 3) {
-        // Slow movement with gravity effect
         positions[j] += velocities[j] * 0.5;
-        positions[j + 1] += velocities[j + 1] * 0.5 - 0.01; // Gravity
+        positions[j + 1] += velocities[j + 1] * 0.5 - 0.01;
         positions[j + 2] += velocities[j + 2] * 0.5;
         
-        // Flickering effect
         if (now % particles.userData.flickerInterval < 16) {
           colors[j + 1] = Math.min(1, colors[j + 1] * (0.9 + Math.random() * 0.2));
         }
       }
       
-      // Slow fade for fire
-      const progress = particles.userData.lifetime / (PARTICLE_LIFETIME * 3);
+      const progress = particles.userData.lifetime / (PARTICLE_LIFETIME * 12);
       for (let j = 0; j < opacities.length; j++) {
-        opacities[j] = 1 - progress * progress; // Quadratic fade
-        sizes[j] *= 0.998;
+        opacities[j] = 1 - progress * progress;
+        sizes[j] *= 0.999;
       }
     } else {
-      // Normal explosion behavior
       for (let j = 0; j < positions.length; j += 3) {
         positions[j] += velocities[j];
         positions[j + 1] += velocities[j + 1];
@@ -185,21 +189,16 @@ function updateParticles() {
     particles.geometry.attributes.size.needsUpdate = true;
     particles.geometry.attributes.color.needsUpdate = true;
     
-    // Remove expired particles
-    if (particles.userData.lifetime >= (particles.userData.type === "fire" ? PARTICLE_LIFETIME * 3 : PARTICLE_LIFETIME)) {
+    if (particles.userData.lifetime >= particles.userData.maxLifetime) {
       scene.remove(particles);
       particleSystems.splice(i, 1);
     }
   }
 }
 
-// ------------------- Leaderboard Setup -------------------
-// Prefill the leaderboard with sample data for testing
 function prefillLeaderboard() {
   const existing = getLeaderboardData();
-  if (existing.length > 0) {
-    return;
-  }
+  if (existing.length > 0) return;
 
   const initialData = [{ name: "%app%",score: 10000 },{ name: "Teste",score: 90 },{ name: "AHHHH",score: 70 },{ name: "Quart",score: 60 },{ name: "Quint",score: 55 },{ name: "Sexto",score: 50 },{ name: "Seti",score: 40 },{ name: "Oitav",score: 30 },{ name: "Non",score: 25 }];
   saveLeaderboardData(initialData);
@@ -222,7 +221,6 @@ function storeNewScore(name, score) {
 
 function updateLeaderboard() {
   const data = getLeaderboardData();
-  // Sort descending by score
   data.sort((a, b) => b.score - a.score);
   data.splice(9);
 
@@ -239,17 +237,14 @@ function updateLeaderboard() {
       default: suffix = "TH"; break;
     }
 
-    // Create row container
     const row = document.createElement("div");
     row.classList.add("leaderboard-row");
 
-    // POS column
     const posDiv = document.createElement("div");
     posDiv.classList.add("leaderboard-pos");
     posDiv.textContent = `${rank}${suffix}`;
     row.appendChild(posDiv);
 
-    // NAME column
     const nameDiv = document.createElement("div");
     nameDiv.classList.add("leaderboard-name");
     nameDiv.textContent = entry.name;
@@ -259,7 +254,6 @@ function updateLeaderboard() {
     else { nameDiv.style.color = "yellow"; }
     row.appendChild(nameDiv);
 
-    // SCORE column
     const scoreDiv = document.createElement("div");
     scoreDiv.classList.add("leaderboard-score");
     scoreDiv.textContent = entry.score;
@@ -269,32 +263,20 @@ function updateLeaderboard() {
   });
 }
 
-// ------------------- Score Board & Lives Display -------------------
 function updateScoreBoard() {
   const scoreBoard = document.getElementById("scoreBoard");
   scoreBoard.innerHTML = `Score : ${points}`;
 }
 
-// NEW: separate function to update the "lives" container
-function updateLivesDisplay() {
-  const livesEl = document.getElementById("livesContainer");
-  livesEl.innerHTML = `Lifes: ${playerLives}`;
+//function updateLivesDisplay() {
+//  const livesEl = document.getElementById("livesContainer");
+//  livesEl.innerHTML = `Lifes: ${playerLives}`;
+//}
+
+function allAliensInPosition() {
+  return aliens.every(alien => alien.userData.targetX === undefined);
 }
 
-/*
-function updateAliens() {
-  const now = Date.now();
-  // Speed increases as aliens are eliminated (minimum 300ms delay)
-  const speedFactor = Math.max(0.3, aliens.length / (rows * cols));
-  const currentMoveDelay = alienMoveDelay * speedFactor;
-  
-  if (now - lastAlienMoveTime < currentMoveDelay) return;
-  lastAlienMoveTime = now;
-
-  // Rest of the function remains the same...
-}*/ // ideia para dificuldade
-
-// ------------------- 3D to 2D Projection Helper -------------------
 function toScreenPosition(obj, camera) {
   const vector = new THREE.Vector3();
   const widthHalf = window.innerWidth / 2;
@@ -309,36 +291,106 @@ function toScreenPosition(obj, camera) {
   return { x: vector.x, y: vector.y };
 }
 
-// We'll call this in the render loop to position .lives-container
-function updateLivesPosition() {
-  const livesEl = document.getElementById('livesContainer');
+function createColoredPlanet(size = 1, color = 0xaaaaaa, hasRing = false) {
+  const geometry = new THREE.SphereGeometry(size, 16, 16);
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.6,
+    metalness: 0.2,
+    emissive: color,
+    emissiveIntensity: 0.05
+  });
 
-  if (currentLevel === 3) {
-    // True POV — manually pin to top-left
-    livesEl.style.position = 'fixed';
-    livesEl.style.left = '20px';
-    livesEl.style.top = '20px';
-  } else {
-    // All other views — follow player
-    const canvasRect = renderer.domElement.getBoundingClientRect();
-  
-    const vector = new THREE.Vector3();
-    vector.copy(player.position);
-    vector.project(camera);
-  
-    const x = (vector.x + 1) / 2 * canvasRect.width + canvasRect.left;
-    const y = (-vector.y + 1) / 2 * canvasRect.height + canvasRect.top;
-  
-    const offsetX = 30;
-    const offsetY = -10;
-  
-    livesEl.style.position = 'absolute';
-    livesEl.style.left = (x + offsetX) + 'px';
-    livesEl.style.top = (y + offsetY) + 'px';
+  const planet = new THREE.Mesh(geometry, material);
+  const group = new THREE.Group();
+  group.add(planet);
+
+  if (hasRing) {
+    const ringInner = size * 1.2;
+    const ringOuter = size * 1.8;
+    const ringGeometry = new THREE.RingGeometry(ringInner, ringOuter, 64);
+    const ringMaterial = new THREE.MeshStandardMaterial({
+      color: 0xcccccc,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.5
+    });
+
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.rotation.x = Math.PI / 2.5;
+    ring.rotation.z = Math.random() * Math.PI;
+    ring.position.y = 0;
+
+    group.add(ring);
+    group.userData.hasRing = true;
   }
+
+  return group;
 }
 
-// ------------------- Keyboard Handling -------------------
+function applyCameraShake(duration = 300, magnitude = 0.02) {
+  const shakeStartTime = Date.now();
+
+  function shake() {
+    const elapsed = Date.now() - shakeStartTime;
+    if (elapsed < duration) {
+      cameraShakeOffset.set(
+        (Math.random() - 0.5) * magnitude,
+        (Math.random() - 0.5) * magnitude,
+        (Math.random() - 0.5) * magnitude
+      );
+      setTimeout(shake, 16);
+    } else {
+      cameraShakeOffset.set(0, 0, 0);
+    }
+  }
+
+  shake();
+}
+
+
+function spawnRandomPlanet() {
+  if (wanderingPlanets.length >= 5) return;
+
+  const size = Math.random() * 2 + 1;
+  const colors = [0x777777, 0x554433, 0x669999, 0x888888, 0x333366];
+  const color = colors[Math.floor(Math.random() * colors.length)];
+  const hasRing = Math.random() < 0.3;
+
+  const planet = createColoredPlanet(size, color, hasRing);
+
+  let x = (Math.random() - 0.5) * 100;
+  let y, z;
+
+  if (currentLevel === 1) {
+    y = 20;
+    z = -30 - Math.random() * 20;
+  } else {
+    y = 60 + Math.random() * 20;
+    z = -50 - Math.random() * 20;
+  }
+
+  planet.position.set(x, y, z);
+
+  const direction = new THREE.Vector3(
+    (Math.random() - 0.5),
+    0,
+    (Math.random() - 0.5)
+  ).normalize();
+
+  planet.userData.velocity = direction.multiplyScalar(0.15 + Math.random() * 0.05);
+  scene.add(planet);
+  wanderingPlanets.push(planet);
+}
+
+
+//function updateLivesPosition() {
+//  const livesEl = document.getElementById('livesContainer');
+//  livesEl.style.position = 'fixed';
+//  livesEl.style.left = '20px';
+//  livesEl.style.top = '20px';
+//}
+
 document.addEventListener("keydown", (event) => {
   keys[event.key.toLowerCase()] = true;
   if (event.key === " ") {
@@ -350,44 +402,409 @@ document.addEventListener("keyup", (event) => {
   keys[event.key.toLowerCase()] = false;
 });
 
-// ------------------- Game Initialization -------------------
+function createShootingStar() {
+  const now = Date.now();
+  if (now - lastShootingStarTime < 1000 || shootingStars.length > 0) return;
+  lastShootingStarTime = now;
+
+  const fixedZ = 4;
+  const startX = (Math.random() * 20 - 10) + horizontalOffset;
+  const startY = 35;
+  const midX = startX + (Math.random() * 8 - 4);
+  const playerY = player?.position?.y || -5;
+  const endX = startX + (Math.random() * 10 - 5);
+  const endY = -20;
+
+  const curve = new THREE.QuadraticBezierCurve3(
+    new THREE.Vector3(startX, startY, fixedZ),
+    new THREE.Vector3(midX, playerY, fixedZ),
+    new THREE.Vector3(endX, endY, fixedZ)
+  );
+
+  const points = curve.getPoints(70);
+
+  const fullPath = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(points),
+    new THREE.LineDashedMaterial({
+      color: 0x88ccff,
+      dashSize: 0.5,
+      gapSize: 0.3,
+      linewidth: 1,
+      transparent: true,
+      opacity: 0.5
+    })
+  );
+  fullPath.computeLineDistances();
+  scene.add(fullPath);
+
+  const starLight = new THREE.PointLight(0xfff4e6, 0, 50, 2.5);
+  starLight.position.set(startX, startY, fixedZ);
+  starLight.castShadow = true;
+  starLight.shadow.mapSize.width = 1024;
+  starLight.shadow.mapSize.height = 1024;
+  starLight.shadow.bias = -0.003;
+  starLight.shadow.radius = 5;
+  scene.add(starLight);
+
+  const star = new THREE.Mesh(
+    new THREE.SphereGeometry(0.3, 16, 16),
+    new THREE.MeshStandardMaterial({
+      color: 0xfff4e6,
+      emissive: 0xfff4e6,
+      emissiveIntensity: 0,
+      roughness: 0.1,
+      metalness: 0.5,
+      transparent: true,
+      opacity: 0
+    })
+  );
+  star.position.set(startX, startY, fixedZ);
+  star.castShadow = true;
+  star.receiveShadow = true;
+  scene.add(star);
+
+  const directionalLight = new THREE.DirectionalLight(0xfff4e6, 2.5);
+  directionalLight.position.set(startX, startY, fixedZ + 5);
+  directionalLight.target.position.set(startX, startY, fixedZ);
+  directionalLight.castShadow = true;
+  directionalLight.shadow.mapSize.width = 2048;
+  directionalLight.shadow.mapSize.height = 2048;
+  directionalLight.shadow.bias = -0.002;
+  directionalLight.shadow.radius = 6;
+  scene.add(directionalLight);
+  scene.add(directionalLight.target);
+
+  const trail = new THREE.Line(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({
+      color: 0x88ccff,
+      transparent: true,
+      opacity: 0.7,
+      linewidth: 1.5
+    })
+  );
+  scene.add(trail);
+
+  shootingStars.push({
+    light: starLight,
+    directionalLight,
+    star,
+    trail,
+    fullPath,
+    points,
+    currentPoint: 0,
+    speed: 0.12 + Math.random() * 0.04,
+    maxIntensity: 200
+  });
+}
+
+
+function updateShootingStars() {
+  let spawnNext = false;
+
+  for (let i = shootingStars.length - 1; i >= 0; i--) {
+    const starData = shootingStars[i];
+    starData.currentPoint += starData.speed;
+
+    if (starData.currentPoint >= starData.points.length) {
+      scene.remove(
+        starData.light,
+        starData.directionalLight,
+        starData.directionalLight.target,
+        starData.star,
+        starData.trail,
+        starData.fullPath
+      );
+      shootingStars.splice(i, 1);
+      spawnNext = true;
+      continue;
+    }
+
+    const pointIndex = Math.min(Math.floor(starData.currentPoint), starData.points.length - 1);
+    const progress = starData.currentPoint - pointIndex;
+    const position = starData.points[pointIndex].clone().lerp(
+      starData.points[Math.min(pointIndex + 1, starData.points.length - 1)],
+      progress
+    );
+
+    starData.light.position.copy(position);
+    starData.directionalLight.position.copy(position.clone().add(new THREE.Vector3(0, 0, 5)));
+    starData.directionalLight.target.position.copy(position);
+    starData.star.position.copy(position);
+
+    const trailPoints = starData.points.slice(Math.max(0, pointIndex - 10), pointIndex + 1);
+    trailPoints.push(position.clone());
+    starData.trail.geometry.dispose();
+    starData.trail.geometry = new THREE.BufferGeometry().setFromPoints(trailPoints);
+
+    const progressRatio = starData.currentPoint / starData.points.length;
+    starData.fullPath.material.opacity = 0.3 * (1 - progressRatio);
+
+    const totalDist = starData.points[0].distanceTo(starData.points[starData.points.length - 1]);
+    const curDist = starData.points[0].distanceTo(position);
+    const fadeInDist = 12, fadeOutDist = 12;
+
+    let fadeFactor = 1.0;
+    if (curDist < fadeInDist) {
+      fadeFactor = curDist / fadeInDist;
+    } else if (totalDist - curDist < fadeOutDist) {
+      fadeFactor = (totalDist - curDist) / fadeOutDist;
+    }
+
+    starData.light.intensity = starData.maxIntensity * fadeFactor;
+    starData.directionalLight.intensity = 0;
+    starData.star.material.emissiveIntensity = 1.5 * fadeFactor;
+    starData.star.material.opacity = fadeFactor;
+  }
+
+  if (spawnNext) lastShootingStarTime = Date.now();
+
+  if (shootingStars.length === 0 && Date.now() - lastShootingStarTime >= 1000) {
+    createShootingStar();
+  }
+}
+
+function heartExplosion(heartObject) {
+  const pixels = [];
+
+  heartObject.traverse(child => {
+    if (child.isMesh) {
+      for (let i = 0; i < 2; i++) {
+        const clone = child.clone();
+        clone.material = child.material.clone();
+        clone.position.copy(child.getWorldPosition(new THREE.Vector3()));
+        clone.material.transparent = true;
+        clone.material.opacity = 1;
+        clone.scale.setScalar(1.5);
+        uiScene.add(clone);
+
+        const velocity = new THREE.Vector3(
+          (Math.random() - 0.5) * 6,
+          (Math.random() - 0.5) * 6,
+          0
+        );
+
+        pixels.push({ mesh: clone, velocity, lifetime: 0 });
+      }
+    }
+  });
+
+  const lifespan = 1000;
+
+  function update() {
+    for (let i = pixels.length - 1; i >= 0; i--) {
+      const p = pixels[i];
+      p.lifetime += 16;
+
+      p.mesh.position.add(p.velocity.clone().multiplyScalar(0.25));
+      p.mesh.material.opacity -= 0.03;
+      p.mesh.scale.multiplyScalar(0.94);
+
+      if (p.lifetime > lifespan || p.mesh.material.opacity <= 0) {
+        uiScene.remove(p.mesh);
+        pixels.splice(i, 1);
+      }
+    }
+
+    if (pixels.length > 0) {
+      requestAnimationFrame(update);
+    }
+  }
+
+  update();
+}
+
+function updateHeartDisplay() {
+  for (let i = 0; i < heartGroup.children.length; i++) {
+    const heart = heartGroup.children[i];
+    const shouldBeVisible = i < playerLives;
+
+    if (heart.visible && !shouldBeVisible) {
+      heartExplosion(heart);
+    }
+
+    heart.visible = shouldBeVisible;
+  }
+}
+
+function createSphericalMoon() {
+  const moonRadius = 30;
+  const moonGeometry = new THREE.SphereGeometry(moonRadius, 128, 128);
+
+  const moonTexture = new THREE.TextureLoader().load('images/moon_texture.jpg', (texture) => {
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.needsUpdate = true;
+    renderer.renderLists.dispose();
+  });
+
+  const moonMaterial = new THREE.MeshStandardMaterial({ 
+    map: moonTexture,
+    roughness: 0.9,
+    metalness: 0.1,
+    side: THREE.DoubleSide
+  });
+
+  const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+  moon.position.set(horizontalOffset, 0, -33);
+  moon.receiveShadow = true;
+  moon.castShadow = true;
+
+  const rotationAxis = new THREE.Vector3(
+    Math.random() - 0.5,
+    Math.random() - 0.5,
+    Math.random() - 0.5
+  ).normalize();
+  moon.userData.rotationAxis = rotationAxis;
+
+  const flagPaths = ['images/flag1.png', 'images/flag2.png', 'images/flag3.jpg', 'images/flag4.jpg', 'images/flag5.jpg'];
+  const loader = new THREE.TextureLoader();
+
+  flagPaths.forEach((path) => {
+    const flagGroup = new THREE.Group();
+
+    const poleHeight = 1.5;
+    const poleGeom = new THREE.CylinderGeometry(0.03, 0.03, poleHeight, 8);
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
+    const pole = new THREE.Mesh(poleGeom, poleMat);
+    pole.position.y = poleHeight / 2;
+    flagGroup.add(pole);
+
+    const flagTexture = loader.load(path);
+    const flagMat = new THREE.MeshBasicMaterial({ map: flagTexture, transparent: true, side: THREE.DoubleSide });
+    const flagGeom = new THREE.PlaneGeometry(1, 0.6);
+    const flag = new THREE.Mesh(flagGeom, flagMat);
+
+    flag.position.set(0.53, poleHeight - 0.3, 0);
+    flag.rotation.y = 0;
+
+    flag.userData.isWavingFlag = true;
+    flag.userData.waveStartTime = Math.random() * Math.PI * 2;
+    wavingFlags.push(flag);
+
+    flagGroup.add(flag);
+    flagGroup.scale.setScalar(0.6);
+
+    const theta = Math.random() * Math.PI;
+    const phi = Math.PI / 2 + (Math.random() - 0.5) * 0.4;
+
+    const normal = new THREE.Vector3(
+      Math.sin(phi) * Math.cos(theta),
+      Math.cos(phi),
+      Math.sin(phi) * Math.sin(theta)
+    );
+
+    const surfacePoint = normal.clone().multiplyScalar(moonRadius + 0.01);
+    flagGroup.position.copy(surfacePoint);
+
+    const up = new THREE.Vector3(0, 1, 0);
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
+    flagGroup.quaternion.copy(quaternion);
+
+    moon.add(flagGroup);
+  });
+
+  return moon;
+}
+
 async function startGame() {
-  // Reset game variables
   points = 0;
   playerLives = 3;
   gameOver = false;
   updateScoreBoard();
 
-  const livesEl = document.getElementById("livesContainer");
-  livesEl.classList.remove("hidden");
-  updateLivesDisplay();
+  document.getElementById("changeCameraButton").classList.remove("hidden");
 
-  // THREE.JS SETUP (Main Game Scene)
+  //const livesEl = document.getElementById("livesContainer");
+  //livesEl.classList.remove("hidden");
+  //updateLivesDisplay();
+
   scene = new THREE.Scene();
+  scene.background = null;
+
+  scene = new THREE.Scene();
+  scene.background = null;
+
+  uiScene = new THREE.Scene();
+  uiCamera = new THREE.OrthographicCamera(
+    -window.innerWidth / 2, window.innerWidth / 2,
+    window.innerHeight / 2, -window.innerHeight / 2,
+    0.1, 10
+  );
+  uiCamera.position.z = 1;
+
+  heartGroup = new THREE.Group();
+
+  for (let i = 0; i < 3; i++) {
+    const heart = createFullHeart();
+    const spacing = 60;
+
+    for (let i = 0; i < 3; i++) {
+      const heart = createFullHeart();
+      heart.scale.setScalar(2.5);
+      heart.position.set(i * spacing, 0, 0);
+      heartGroup.add(heart);
+    } 
+    
+    heartGroup.add(heart);
+  }
+
+  heartGroup.position.set(-window.innerWidth / 2 + 20,window.innerHeight / 2 - 50,-0.5);
+
+  uiScene.add(heartGroup);
+
+  //const debugBox = new THREE.Mesh(
+  //  new THREE.BoxGeometry(200, 200, 1),
+  //  new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+  //);
+  //debugBox.position.set(0, 0, 0);
+  //heartGroup.add(debugBox);
+
+  //console.log("Hearts in group:", heartGroup.children.length);
+
+  updateHeartDisplay();
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   setCameraView();
 
-  renderer = new THREE.WebGLRenderer({ alpha: true });
+  //const axesHelper = new THREE.AxesHelper(5);
+  //scene.add(axesHelper);
+
+  const moon = createSphericalMoon();
+  scene.add(moon);
+
+  renderer = new THREE.WebGLRenderer({ alpha: true, preserveDrawingBuffer: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.physicallyCorrectLights = true;
   document.body.appendChild(renderer.domElement);
 
-  // LIGHTING
+  renderer.physicallyCorrectLights = true;
+  scene.environment = new THREE.AmbientLight(0x404040, 0.5);
+
   const light = new THREE.AmbientLight(0xffffff, 1.5);
   scene.add(light);
 
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-  directionalLight.position.set(0, 1, 1).normalize();
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9); 
+  directionalLight.position.set(0, 10, 10);
+  directionalLight.castShadow = true;
+  directionalLight.shadow.mapSize.width = 1024;
+  directionalLight.shadow.mapSize.height = 1024;
+  directionalLight.shadow.camera.near = 0.5;
+  directionalLight.shadow.camera.far = 50;
+  directionalLight.shadow.camera.left = -30;
+  directionalLight.shadow.camera.right = 30;
+  directionalLight.shadow.camera.top = 30;
+  directionalLight.shadow.camera.bottom = -30;
+  directionalLight.shadow.bias = -0.001; 
+  directionalLight.shadow.radius = 2;
+  directionalLight.shadow.darkness = 0.3;
+
   scene.add(directionalLight);
 
-  // PLAYER SETUP
-  /*const playerGeometry = new THREE.BoxGeometry(1, 0.5, 0.5);
-  const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
-  player = new THREE.Mesh(playerGeometry, playerMaterial);
-  player.position.y = -5;
-  player.position.x = horizontalOffset; // apply horizontal offset
-  scene.add(player);*/
-  // PLAYER SETUP
+
   const loader = new GLTFLoader();
   try {
     const gltf = await loader.loadAsync('models/spaceship.glb');
@@ -395,31 +812,35 @@ async function startGame() {
     player.position.y = -5;
     player.position.x = horizontalOffset;
     player.scale.set(0.0025, 0.0025, 0.0025);
+    player.traverse(function(node) {
+      if (node.isMesh) {
+        node.castShadow = true;
+        node.receiveShadow = true;
+      }
+    });
     scene.add(player);
 
     if (currentLevel === 1) {
-      player.rotation.set(-Math.PI/2, 0, Math.PI); // Rotate to face upwards
+      player.rotation.set(-Math.PI/2, 0, Math.PI);
     }
-    
   } catch (error) {
     console.error("Error loading spaceship:", error);
-    // Fallback to simple geometry
     const playerGeometry = new THREE.BoxGeometry(1, 0.5, 0.5);
     const playerMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
     player = new THREE.Mesh(playerGeometry, playerMaterial);
     player.position.y = -5;
     player.position.x = horizontalOffset;
+    player.castShadow = true;
+    player.receiveShadow = true;
     scene.add(player);
   }
 
   projectiles = [];
   resetAliens();
-  createGameBox();
+  //createGameBox();
   const asteroidBelt = createBelt();
 
-  // Load Shader Background
   const fragmentShaderCode = await loadShader('space.txt');
-  //const fragmentShaderCode = await loadShader('/shaders/space.glsl');
   const backgroundScene = new THREE.Scene();
   const backgroundCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
   backgroundCamera.position.z = 1;
@@ -441,7 +862,6 @@ async function startGame() {
   const backgroundMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), backgroundMaterial);
   backgroundScene.add(backgroundMesh);
 
-  // Resize Handler
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -451,14 +871,55 @@ async function startGame() {
 
   const clock = new THREE.Clock();
 
-  // Main Render Loop (Shader always running)
   function animate() {
     requestAnimationFrame(animate);
   
-    // Update Shader background continuously
     backgroundMaterial.uniforms.u_time.value += clock.getDelta();
 
     updateParticles();
+    updateShootingStars();
+    createShootingStar();
+
+    const time = performance.now() * 0.002;
+    wavingFlags.forEach(flag => {
+      const waveSpeed = 2;
+      const waveAmount = 0.08;
+      flag.rotation.z = Math.sin(time + flag.userData.waveStartTime) * waveAmount;
+    });
+
+
+    if (Date.now() - lastPlanetSpawnTime > planetSpawnInterval) {
+      spawnRandomPlanet();
+      lastPlanetSpawnTime = Date.now();
+    }
+
+
+    planetCamMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    planetFrustum.setFromProjectionMatrix(planetCamMatrix);
+
+    for (let i = wanderingPlanets.length - 1; i >= 0; i--) {
+      const planet = wanderingPlanets[i];
+      planet.position.add(planet.userData.velocity);
+
+      planet.rotation.y += 0.001;
+      if (planet.userData.hasRing) {
+        planet.rotation.z += 0.0005;
+      }
+
+      if (
+        Math.abs(planet.position.x) > 120 ||
+        Math.abs(planet.position.z) > 120
+      ) {
+        scene.remove(planet);
+        wanderingPlanets.splice(i, 1);
+      }
+    }
+
+
+    if (moon) {
+      const axis = moon.userData.rotationAxis;
+      moon.rotateOnAxis(axis, 0.005);
+    }
 
     if (!gameOver && asteroidBelt) {
       asteroidBelt.animate();
@@ -470,24 +931,21 @@ async function startGame() {
 
       if (currentLevel === 3 && !isCameraTransitioning) {
         const offset = new THREE.Vector3(0, 0.3, 0.5);
-        camera.position.copy(player.position.clone().add(offset));
+        camera.position.copy(player.position.clone().add(offset).add(cameraShakeOffset));
         const lookAt = player.position.clone().add(new THREE.Vector3(0, 500, 0));
         camera.lookAt(lookAt);
       }
 
-      // === Move alien bullets downward ===
       for (let i = alienProjectiles.length - 1; i >= 0; i--) {
         const bullet = alienProjectiles[i];
         bullet.position.y -= 0.1;
   
-        // Remove bullets off screen
         if (bullet.position.y < -10) {
           scene.remove(bullet);
           alienProjectiles.splice(i, 1);
           continue;
         }
   
-        // Check collision with player
         const dx = bullet.position.x - player.position.x;
         const dy = bullet.position.y - player.position.y;
         const dz = bullet.position.z - player.position.z;
@@ -497,7 +955,8 @@ async function startGame() {
           scene.remove(bullet);
           alienProjectiles.splice(i, 1);
           playerLives--;
-          updateLivesDisplay();
+          //updateLivesDisplay();
+          updateHeartDisplay();
           updateScoreBoard();
           sounds.impact.currentTime = 0;
           sounds.impact.play();
@@ -505,10 +964,14 @@ async function startGame() {
             createExplosion(player.position.clone(), 0xffffff, 15);
             createExplosion(player.position.clone(), 0xff0000, 15);
           }
+          if (currentLevel === 3 && playerLives > 0) {
+            applyCameraShake();
+          }
           if (playerLives <= 0) {
-            player.visible = false;
-            createExplosion(player.position.clone(), 0xff0000, 500, true);
-            createExplosion(player.position.clone(), 0xffffff, 500, true);
+            createExplosion(player.position.clone(), 0xff0000, 500, "fire");
+            createExplosion(player.position.clone(), 0xffffff, 500, "fire");
+            scene.remove(player);
+            player = null;
             gameOver = true;
             displayGameOverPopup();
             sounds.death.currentTime = 0;
@@ -517,7 +980,6 @@ async function startGame() {
         }
       }
   
-      // === Move player projectiles upward ===
       for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
         const projectile = projectiles[pIndex];
         projectile.position.y += PLAYER_PROJECTILE_SPEED;
@@ -527,14 +989,13 @@ async function startGame() {
         }
       }
 
-      if (currentLevel === 3 && !isCameraTransitioning) {
-        const offset = new THREE.Vector3(0, 0.3, 0.5);
-        camera.position.copy(player.position.clone().add(offset));
-        const lookAt = player.position.clone().add(new THREE.Vector3(0, 500, 0));
-        camera.lookAt(lookAt);
-      }
+      //if (currentLevel === 3 && !isCameraTransitioning) {
+      //  const offset = new THREE.Vector3(0, 0.3, 0.5);
+      //  camera.position.copy(player.position.clone().add(offset));
+      //  const lookAt = player.position.clone().add(new THREE.Vector3(0, 500, 0));
+      //  camera.lookAt(lookAt);
+      //}
       
-      // === Detect collision between player bullets and alien bullets ===
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const playerBullet = projectiles[i];
         for (let j = alienProjectiles.length - 1; j >= 0; j--) {
@@ -548,39 +1009,33 @@ async function startGame() {
             scene.remove(alienBullet);
             projectiles.splice(i, 1);
             alienProjectiles.splice(j, 1);
-            break; // break inner loop after removing this player bullet
+            break;
           }
         }
       }
 
-      // === Check collisions with aliens ===
-      // Replace the simple distance check with this:
       for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
         const projectile = projectiles[pIndex];
         projectile.position.y += PLAYER_PROJECTILE_SPEED;
       
-        // Check for asteroid hits first
         if (asteroidBelt.checkAsteroidHit(projectile)) {
           scene.remove(projectile);
           projectiles.splice(pIndex, 1);
           continue;
         }
       
-        // Then check for alien hits with bounding boxes
-        // Check for alien hits with bounding boxes
         const projectileBox = new THREE.Box3().setFromObject(projectile);
         for (let aIndex = aliens.length - 1; aIndex >= 0; aIndex--) {
             const alien = aliens[aIndex];
             const alienBox = new THREE.Box3().setFromObject(alien);
 
             if (alienBox.intersectsBox(projectileBox) && !alien.userData.isDodging) {
-                // Determine explosion color based on alien type
                 let explosionColor;
-                switch(alien.userData.type) {  // Now checking the direct type property
-                    case 'octopus': explosionColor = 0xffee00; break; // Yellow
-                    case 'crab': explosionColor = 0x08ffff; break;    // Cyan
-                    case 'squid': explosionColor = 0xec20eb; break;   // Purple
-                    default: explosionColor = 0xff0000; break;        // Fallback red
+                switch(alien.userData.type) {
+                    case 'octopus': explosionColor = 0xffee00; break;
+                    case 'crab': explosionColor = 0x08ffff; break;
+                    case 'squid': explosionColor = 0xec20eb; break;
+                    default: explosionColor = 0xff0000; break;
                 }
 
                 createExplosion(alien.position.clone(), explosionColor, 30);
@@ -597,7 +1052,6 @@ async function startGame() {
             }
         }
       
-        // Update this line to use PLAYER_PROJECTILE_RANGE instead of 5
         if (projectile.position.y > PLAYER_PROJECTILE_RANGE) {
           scene.remove(projectile);
           projectiles.splice(pIndex, 1);
@@ -605,15 +1059,24 @@ async function startGame() {
       }
   
       updateAliens();
+      aliens.forEach(alien => {
+        if (alien.userData.targetX !== undefined) {
+          alien.position.x = THREE.MathUtils.lerp(alien.position.x, alien.userData.targetX, 0.05);
+          if (Math.abs(alien.position.x - alien.userData.targetX) < 0.05) {
+            alien.position.x = alien.userData.targetX;
+            delete alien.userData.targetX;
+          }
+        }
+      });
+
+
       checkPlayerCollision();
       checkLevelCompletion();
-      updateLivesPosition();
+      //updateLivesPosition();
     }
   
-    // ========== Smooth Camera Transition ==========
     if (isCameraTransitioning) {
       const currentPosition = camera.position.clone();
-      // Use faster transition for Level 3
       const lerpSpeed = currentLevel === 3 ? 0.15 : 0.05;
           
       const newPosition = currentPosition.lerp(cameraTargetPosition, lerpSpeed);
@@ -640,18 +1103,16 @@ async function startGame() {
       }
     }
 
-    // Always render background and scene (even during Game Over)
     renderer.autoClear = false;
     renderer.clear();
     renderer.render(backgroundScene, backgroundCamera);
     renderer.render(scene, camera);
+    renderer.render(uiScene, uiCamera);
   }  
 
   animate();
 }
 
-
-// ------------------- Player Movement -------------------
 function updatePlayerMovement() {
   if (keys["a"] || keys["arrowleft"]) {
     player.position.x = Math.max(-playAreaLimit + horizontalOffset, player.position.x - playerSpeed);
@@ -661,16 +1122,14 @@ function updatePlayerMovement() {
   }
 }
 
-// ------------------- Projectiles -------------------
 const maxProjectiles = 5;
 
 function shootProjectile() {
   if (projectiles.length >= maxProjectiles) return;
 
-  sounds.shoot.currentTime = 0; // Rewind if already playing
+  sounds.shoot.currentTime = 0;
   sounds.shoot.play();
   
-  // Main bullet cube
   const projectileGeometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
   const projectileMaterial = new THREE.MeshBasicMaterial({
     color: 0x30bdff,
@@ -681,7 +1140,6 @@ function shootProjectile() {
   const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
   projectile.position.set(player.position.x, player.position.y + 0.5, 0);
   
-  // Simple glow effect - slightly larger transparent cube
   const glowGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
   const glowMaterial = new THREE.MeshBasicMaterial({
     color: 0x30bdff,
@@ -708,7 +1166,6 @@ function alienShoot(alien) {
   const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
   bullet.position.set(alien.position.x, alien.position.y - 0.5, alien.position.z);
   
-  // Enemy bullet glow
   const glowGeometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
   const glowMaterial = new THREE.MeshBasicMaterial({
     color: 0xff0101,
@@ -725,14 +1182,15 @@ function alienShoot(alien) {
   alienProjectiles.push(bullet);
 }
 
-// ------------------- Alien Movement (Discrete Steps) -------------------
 function updateAliens() {
+  if (!allAliensInPosition()) return;
+
   const now = Date.now();
   if (now - lastAlienMoveTime < alienMoveDelay) return;
   lastAlienMoveTime = now;
 
-  const leftBoundary = -11 + horizontalOffset; // apply horizontal offset
-  const rightBoundary = 11 + horizontalOffset; // apply horizontal offset
+  const leftBoundary = -11 + horizontalOffset;
+  const rightBoundary = 11 + horizontalOffset;
   let hitBoundary = false;
   aliens.forEach(alien => {
     if ((alien.position.x + horizontalStep * alienDirection) < leftBoundary ||
@@ -740,6 +1198,7 @@ function updateAliens() {
       hitBoundary = true;
     }
   });
+
   if (hitBoundary) {
     aliens.forEach(alien => {
       alien.position.y -= verticalStep;
@@ -760,22 +1219,6 @@ function checkPlayerCollision() {
     const alienBox = new THREE.Box3().setFromObject(alien);
     
     if (playerLives <= 0) {
-      console.log("Game Over!");
-      /*
-      for (let i = 0; i < 5; i++) {
-        setTimeout(() => {
-          createExplosion(
-            player.position.clone().add(new THREE.Vector3(
-              (Math.random() - 0.5) * 0.5,
-              (Math.random() - 0.5) * 0.5,
-              (Math.random() - 0.5) * 0.5
-            )),
-            0xff0000, // Base color (will be overridden for fire)
-            100, // More particles
-            "fire" // Fire type
-          );
-        }, i * 100);
-      }*/
       gameOver = true;
       displayGameOverPopup();
       sounds.death.currentTime = 0;
@@ -784,7 +1227,6 @@ function checkPlayerCollision() {
   }
 }
 
-// ------------------- Game Over Popup -------------------
 function displayGameOverPopup() {
   const overlay = document.getElementById("gameOverOverlay");
   overlay.classList.remove("hidden");
@@ -819,7 +1261,6 @@ function displayGameOverPopup() {
     let playerName = input.innerText.replace(/\s+/g, ' ').trim();
     if (playerName === "") playerName = "???";
     
-    // Clear all particles before storing score and reloading
     particleSystems.forEach(particles => {
       scene.remove(particles);
     });
@@ -830,31 +1271,24 @@ function displayGameOverPopup() {
   };
 }
 
-
-
-// ------------------- Level Progression -------------------
 function checkLevelCompletion() {
   if (aliens.length === 0 && !gameOver && !isCameraTransitioning) {
     points += 50;
     updateScoreBoard();
     
-    // Clear all projectiles
     projectiles.forEach(proj => scene.remove(proj));
     projectiles.length = 0;
     alienProjectiles.forEach(proj => scene.remove(proj));
     alienProjectiles.length = 0;
 
-    // Progress to next level
-    currentLevel = (currentLevel % 3) + 1; // Cycle through 1-3
+    //currentLevel = (currentLevel % 3) + 1;
     
-    // Increment phase immediately with each level change
     if (enemyPhase < 5) {
       enemyPhase++;
     }
 
     console.log("Progressing to Level", currentLevel, "Phase", enemyPhase);
     
-    // Set camera view and reset aliens
     setCameraView();
     resetAliens();
   }
@@ -866,20 +1300,16 @@ function setCameraView() {
   isCameraTransitioning = true;
 
   if (currentLevel === 1) {
-    // Top-down view
     cameraTargetPosition.set(0, 0, 10);
     cameraTargetLookAt.set(0, 0, 0);
   } else if (currentLevel === 2) {
-    // Side view
     cameraTargetPosition.set(-1, -13, 2);
     cameraTargetLookAt.set(-1, 0, 0);
   } else if (currentLevel === 3) {
-    // First-person view
     cameraTargetPosition.copy(player.position.clone().add(new THREE.Vector3(0, 0.3, 0.5)));
     cameraTargetLookAt.copy(player.position.clone().add(new THREE.Vector3(0, 500, 0)));
   }
 
-  // Reset alien rotations and positions based on level
   aliens.forEach(alien => {
     if (currentLevel === 1) {
       alien.rotation.set(0, 0, 0);
@@ -894,25 +1324,22 @@ function setCameraView() {
   });
 }
 
-
-
 function resetAliens() {
   if (!scene) return;
   aliens.forEach(alien => scene.remove(alien));
   aliens.length = 0;
   
   let rows, cols;
-  // Use current enemyPhase to determine formation
   if (enemyPhase === 1) { rows = 1; cols = 3; } 
   else if (enemyPhase === 2) { rows = 2; cols = 3; } 
   else if (enemyPhase === 3) { rows = 3; cols = 3; } 
-  else if (enemyPhase === 4) { rows = 4; cols = 4; } 
-  else { rows = 5; cols = 5; }
+  else{rows = 4; cols = 4; }
+  //else if (enemyPhase === 4) { rows = 4; cols = 4; }  TODO Rrip fps, otimizar depois
+  //else { rows = 5; cols = 5; }
   
   const baseYOffset = 7;
   const alienSpacing = 1.5;
 
-  // Rest of the function remains the same...
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       let alienMesh;
@@ -921,49 +1348,58 @@ function resetAliens() {
           alienMesh = octopus.mesh;
           alienMesh.userData = { 
               pixelArt: octopus,
-              type: 'octopus',  // Explicitly set the type here
+              type: 'octopus',
               isDodging: false,
               originalZ: 0
           };
+          alienMesh.castShadow = true;
+          alienMesh.receiveShadow = true;
       } else if (r < Math.floor(rows * 2 / 3)) {
           const crab = createCrab();
           alienMesh = crab.mesh;
           alienMesh.userData = {
               pixelArt: crab,
-              type: 'crab',  // Explicitly set the type here
+              type: 'crab',
               isDodging: false,
               originalZ: 0
           };
+          alienMesh.castShadow = true;
+          alienMesh.receiveShadow = true;
       } else {
           const squid = createSquid();
           alienMesh = squid.mesh;
           alienMesh.userData = {
               pixelArt: squid,
-              type: 'squid',  // Explicitly set the type here
+              type: 'squid',
               isDodging: false,
               originalZ: 0
           };
+          alienMesh.castShadow = true;
+          alienMesh.receiveShadow = true;
       }
 
+      const finalX = (c - cols / 2) * alienSpacing + horizontalOffset;
+      const finalY = baseYOffset - (r * alienSpacing * 0.8);
       alienMesh.position.set(
-        (c - cols / 2) * alienSpacing + horizontalOffset,
-        baseYOffset - (r * alienSpacing * 0.8), // Stagger rows slightly
+        Math.random() < 0.5 ? -30 : 30,
+        finalY,
         0
       );
+      alienMesh.userData.targetX = finalX;
       
       alienMesh.scale.set(0.1, 0.1, 0.1);
+      alienMesh.castShadow = true;
+      alienMesh.receiveShadow = true;
 
       if (currentLevel !== 1) {
-        alienMesh.rotation.set(Math.PI/2, 0, 0); // Standing position
+        alienMesh.rotation.set(Math.PI/2, 0, 0);
       }
 
       scene.add(alienMesh);
       aliens.push(alienMesh);
 
-      // Store reference to the PixelArt instance
       alienMesh.userData.pixelArt = alienMesh.parent;
 
-      // Dodging Behavior
       alienMesh.userData.isDodging = false;
       alienMesh.userData.originalZ = alienMesh.position.z;
 
@@ -983,7 +1419,6 @@ function resetAliens() {
       };
       setTimeout(tryDodge, 1000 + Math.random() * 2000);
 
-      // Shooting Behavior
       const shootRandomly = () => {
         if (!gameOver && aliens.includes(alienMesh)) {
           alienShoot(alienMesh);
@@ -995,36 +1430,20 @@ function resetAliens() {
   }
 }
 
-// ------------------- Game Box (Visible Boundaries) -------------------
-function createGameBox() {
-  const boxWidth = 22;
-  const boxHeight = 16;
-  const boxDepth = 1;
-  const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
-  const edges = new THREE.EdgesGeometry(boxGeometry);
-  const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
-  const gameBox = new THREE.LineSegments(edges, lineMaterial);
-  gameBox.position.set(horizontalOffset, 0, -1);  // apply horizontal offset
-  scene.add(gameBox);
-}
-
 function createBelt() {
   const radius = 20;
   const segments = 75;
   const belt = new THREE.Group();
   
-  // Asteroid size tiers - you can adjust these
   const sizeTiers = [{ min: 0.2, max: 0.3, speedMult: 3.5, type: 'small' }, 
                      { min: 0.4, max: 0.6, speedMult: 1.7, type: 'medium' },
                      { min: 0.7, max: 1.0, speedMult: 1, type: 'large' }];
   
   const launchProbabilities = {small: 0.1,medium: 0.1,large: 0.1};
 
-  // Fallback material if texture fails
   const beltMaterial = new THREE.MeshStandardMaterial({ color: 0x888888,roughness: 0.8,metalness: 0.2});
   const attackMaterial = new THREE.MeshStandardMaterial({ color: 0xff66aa,roughness: 0.7,metalness: 0.2});
 
-  // Try loading texture (but it's optional)
   try {
     const textureLoader = new THREE.TextureLoader();
     const asteroidTexture = textureLoader.load('images/asteroid_texture.jpg');
@@ -1040,7 +1459,6 @@ function createBelt() {
   const launchedAsteroids = [];
   let lastLaunchCheck = Date.now();
 
-  // Create regular belt asteroids
   for (let i = 0; i <= segments; i++) {
     createBeltAsteroid();
   }
@@ -1064,12 +1482,13 @@ function createBelt() {
     const zOffset = (Math.random() - 0.5) * (2 - tierIndex * 0.6);
     
     const asteroid = new THREE.Mesh(geometry, beltMaterial);
+    asteroid.castShadow = true;
+    asteroid.receiveShadow = true;
     
     asteroid.position.set(Math.cos(theta) * radius + horizontalOffset, Math.sin(theta) * radius, zOffset);
     
     asteroid.rotation.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
     
-    // CRUCIAL: Add movement properties
     asteroid.userData = {
       speed: 0.005 + Math.random() * 0.01,
       direction: Math.random() < 0.5 ? 1 : -1,
@@ -1088,18 +1507,15 @@ function createBelt() {
   scene.add(belt);
   
   function animateBelt() {
-    // Check for new launches periodically (every 100ms)
     const now = Date.now();
     if (now - lastLaunchCheck > 100) {
       lastLaunchCheck = now;
       
-      // Check each tier for possible launch
-      if (Math.random() < launchProbabilities.small * 0.1) {launchNewAsteroid(0);}    // small
-      if (Math.random() < launchProbabilities.medium * 0.1) {launchNewAsteroid(1); } // medium
-      if (Math.random() < launchProbabilities.large * 0.1) {launchNewAsteroid(2); } // large
+      if (Math.random() < launchProbabilities.small * 0.1) {launchNewAsteroid(0);}
+      if (Math.random() < launchProbabilities.medium * 0.1) {launchNewAsteroid(1);}
+      if (Math.random() < launchProbabilities.large * 0.1) {launchNewAsteroid(2);}
     }
 
-    // Update launched asteroids
     for (let i = launchedAsteroids.length - 1; i >= 0; i--) {
       const asteroid = launchedAsteroids[i];
       
@@ -1111,13 +1527,11 @@ function createBelt() {
       asteroid.rotation.y += asteroid.userData.rotationSpeed * 0.7;
       asteroid.rotation.z += asteroid.userData.rotationSpeed * 0.5;
       
-      // Remove if off-screen
       if (asteroid.position.y < -10 || Math.abs(asteroid.position.x - horizontalOffset) > 15) {
         removeAsteroid(asteroid, launchedAsteroids, i);
         continue;
       }
       
-      // Check player collision
       const playerDist = Math.sqrt(Math.pow(asteroid.position.x - player.position.x, 2) + Math.pow(asteroid.position.y - player.position.y, 2));
       
       if (asteroid.position.x === 1000) {
@@ -1127,32 +1541,41 @@ function createBelt() {
 
       if (playerDist < 0.8) {
         playerLives--;
-        updateLivesDisplay();
-        removeAsteroid(asteroid, launchedAsteroids, i);
+        //updateLivesDisplay();
+        updateHeartDisplay();
         sounds.impact.currentTime = 0;
         sounds.impact.play();
-        if (playerLives > 0) {
-          createExplosion(player.position.clone(), 0xffffff, 15);
-          createExplosion(player.position.clone(), 0xff0000, 15);
+
+        createExplosion(player.position.clone(), 0xffffff, 15);
+        createExplosion(player.position.clone(), 0xff0000, 15);
+
+        if (currentLevel === 3 && playerLives > 0) {
+          applyCameraShake();
         }
-        if (playerLives <= 0){
-          createExplosion(player.position.clone(), 0x30bdff, 100);
+
+        createExplosion(asteroid.position.clone(), 0x802e47, 30);
+        removeAsteroid(asteroid, launchedAsteroids, i);
+
+        if (playerLives <= 0) {
+          createExplosion(player.position.clone(), 0xff0000, 500, "fire");
+          createExplosion(player.position.clone(), 0xffffff, 500, "fire");
+          scene.remove(player);
+          player = null;
           gameOver = true;
           displayGameOverPopup();
           sounds.death.currentTime = 0;
           sounds.death.play();
-        }continue;
+        }
       }
+
       
-      // Check alien collision
       for (let j = aliens.length - 1; j >= 0; j--) {
         const alien = aliens[j];
         const alienDist = Math.sqrt(Math.pow(asteroid.position.x - alien.position.x, 2) + Math.pow(asteroid.position.y - alien.position.y, 2));
         
         if (alienDist < 0.7) {
-          // Determine explosion color based on alien type
           let explosionColor;
-          switch(alien.userData.type) {  // Now checking the direct type property
+          switch(alien.userData.type) {
               case 'octopus': explosionColor = 0xffee00; break;
               case 'crab': explosionColor = 0x08ffff; break;
               case 'squid': explosionColor = 0xec20eb; break;
@@ -1177,7 +1600,6 @@ function createBelt() {
       }
     }
 
-    // Animate belt asteroids
     belt.children.forEach(asteroid => {
       const data = asteroid.userData;
       const angle = Math.atan2(asteroid.position.y, asteroid.position.x - horizontalOffset);
@@ -1199,6 +1621,8 @@ function createBelt() {
       : new THREE.SphereGeometry(size, 8, 6);
     
     const asteroid = new THREE.Mesh(geometry, attackMaterial);
+    asteroid.castShadow = true;
+    asteroid.receiveShadow = true;
     
     const startX = (Math.random() * 16 - 8) + horizontalOffset;
     asteroid.position.set(startX, 10, 0);
@@ -1218,32 +1642,27 @@ function createBelt() {
   }
   
   function removeAsteroid(asteroid, array, index) {
-    // Only create particles for small asteroids
-    if (asteroid.userData.sizeType === 'small') {
-      createExplosion(asteroid.position.clone(), 0x802e47, 30); // Purple/maroon explosion
+    if (asteroid.userData.sizeType === 'small' && asteroid.position.y > -20) {
+      createExplosion(asteroid.position.clone(), 0x802e47, 30);
     }
     
-    // Move asteroid far away before removal
     asteroid.position.set(1000, 1000, 1000);
     scene.remove(asteroid);
     if (array && index !== undefined) {
       array.splice(index, 1);
     }
-  }
-  // New function to handle asteroid splitting
+}
+
   function splitAsteroid(asteroid) {
     const position = asteroid.position.clone();
     const sizeType = asteroid.userData.sizeType;
   
-    // Remove the original asteroid first
     removeAsteroid(asteroid, launchedAsteroids);
     
     if (sizeType === 'large') {
-      // Large splits into 2 medium (no particles)
       createSplitAsteroid(position, 'medium', Math.random() * Math.PI * 2);
       createSplitAsteroid(position, 'medium', Math.random() * Math.PI * 2);
     } else if (sizeType === 'medium') {
-      // Medium splits into 2 small (no particles)
       createSplitAsteroid(position, 'small', Math.random() * Math.PI * 2);
       createSplitAsteroid(position, 'small', Math.random() * Math.PI * 2);
     }
@@ -1258,11 +1677,12 @@ function createBelt() {
       : new THREE.SphereGeometry(size, 8, 6);
     
     const asteroid = new THREE.Mesh(geometry, attackMaterial);
+    asteroid.castShadow = true;
+    asteroid.receiveShadow = true;
     asteroid.position.copy(position);
     
     asteroid.rotation.set(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
     
-    // Random direction for fragments
     const baseSpeed = sizeType === 'medium' ? 0.05 : 0.07;
     const speedVariation = 0.7 + Math.random() * 0.6;
     
@@ -1279,7 +1699,6 @@ function createBelt() {
     launchedAsteroids.push(asteroid);
   }
 
-  // Also update the checkAsteroidHit function to use the new splitAsteroid:
   function checkAsteroidHit(projectile) {
     for (let i = launchedAsteroids.length - 1; i >= 0; i--) {
       const asteroid = launchedAsteroids[i];
@@ -1304,14 +1723,31 @@ function createBelt() {
   return {group: belt,animate: animateBelt,checkAsteroidHit: checkAsteroidHit};
 }
 
-// Prefill leaderboard data on load
 prefillLeaderboard();
 updateLeaderboard();
 
-// ======== DEBUG ========
+//function createGameBox() {
+//  const boxWidth = 22;
+//  const boxHeight = 16;
+//  const boxDepth = 1;
+//  const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+//  const edges = new THREE.EdgesGeometry(boxGeometry);
+//  const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
+//  const gameBox = new THREE.LineSegments(edges, lineMaterial);
+//  gameBox.position.set(horizontalOffset, 0, -1);
+//  scene.add(gameBox);
+//}
+
 document.addEventListener("keydown", (event) => {
   if (event.key.toLowerCase() === "p") {
     currentLevel = (currentLevel % 3) + 1;
     setCameraView();
   }
 });
+
+document.getElementById("changeCameraButton").addEventListener("click", (e) => {
+  e.currentTarget.blur();
+  currentLevel = (currentLevel % 3) + 1;
+  setCameraView();
+});
+
