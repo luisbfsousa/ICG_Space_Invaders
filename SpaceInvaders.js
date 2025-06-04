@@ -200,7 +200,7 @@ function prefillLeaderboard() {
   const existing = getLeaderboardData();
   if (existing.length > 0) return;
 
-  const initialData = [{ name: "%app%",score: 10000 },{ name: "Teste",score: 90 },{ name: "AHHHH",score: 70 },{ name: "Quart",score: 60 },{ name: "Quint",score: 55 },{ name: "Sexto",score: 50 },{ name: "Seti",score: 40 },{ name: "Oitav",score: 30 },{ name: "Non",score: 25 }];
+  const initialData = [{ name: "Luis",score: 111111 },{ name: "Sousa",score: 108583 },{ name: "ICG",score: 70 },{ name: "Final",score: 60 },{ name: "Proj",score: 55 },{ name: "Space",score: 50 },{ name: "Inva",score: 40 },{ name: "ders",score: 30 },{ name: "3JS",score: 25 }];
   saveLeaderboardData(initialData);
 }
 
