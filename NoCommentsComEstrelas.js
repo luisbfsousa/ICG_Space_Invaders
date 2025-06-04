@@ -564,10 +564,66 @@ function updateShootingStars() {
   }
 }
 
+function heartExplosion(heartObject) {
+  const pixels = [];
+
+  heartObject.traverse(child => {
+    if (child.isMesh) {
+      for (let i = 0; i < 2; i++) { // Double the fragments
+        const clone = child.clone();
+        clone.material = child.material.clone();
+        clone.position.copy(child.getWorldPosition(new THREE.Vector3()));
+        clone.material.transparent = true;
+        clone.material.opacity = 1;
+        clone.scale.setScalar(1.5); // Start slightly larger for a pop effect
+        uiScene.add(clone);
+
+        const velocity = new THREE.Vector3(
+          (Math.random() - 0.5) * 6,
+          (Math.random() - 0.5) * 6,
+          0
+        );
+
+        pixels.push({ mesh: clone, velocity, lifetime: 0 });
+      }
+    }
+  });
+
+  const lifespan = 1000;
+
+  function update() {
+    for (let i = pixels.length - 1; i >= 0; i--) {
+      const p = pixels[i];
+      p.lifetime += 16;
+
+      p.mesh.position.add(p.velocity.clone().multiplyScalar(0.25));
+      p.mesh.material.opacity -= 0.03;
+      p.mesh.scale.multiplyScalar(0.94);
+
+      if (p.lifetime > lifespan || p.mesh.material.opacity <= 0) {
+        uiScene.remove(p.mesh);
+        pixels.splice(i, 1);
+      }
+    }
+
+    if (pixels.length > 0) {
+      requestAnimationFrame(update);
+    }
+  }
+
+  update();
+}
 
 function updateHeartDisplay() {
   for (let i = 0; i < heartGroup.children.length; i++) {
-    heartGroup.children[i].visible = i < playerLives;
+    const heart = heartGroup.children[i];
+    const shouldBeVisible = i < playerLives;
+
+    if (heart.visible && !shouldBeVisible) {
+      heartExplosion(heart);
+    }
+
+    heart.visible = shouldBeVisible;
   }
 }
 
