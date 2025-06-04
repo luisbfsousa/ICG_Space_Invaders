@@ -319,7 +319,7 @@ function createColoredPlanet(size = 1, color = 0xaaaaaa, hasRing = false) {
     const ring = new THREE.Mesh(ringGeometry, ringMaterial);
     ring.rotation.x = Math.PI / 2.5;
     ring.rotation.z = Math.random() * Math.PI;
-    ring.position.y = 0; // align with planet
+    ring.position.y = 0;
 
     group.add(ring);
     group.userData.hasRing = true;
@@ -363,11 +363,9 @@ function spawnRandomPlanet() {
   let y, z;
 
   if (currentLevel === 1) {
-    // Z-based background
     y = 20;
     z = -30 - Math.random() * 20;
   } else {
-    // Y-based deep sky background
     y = 60 + Math.random() * 20;
     z = -50 - Math.random() * 20;
   }
@@ -410,12 +408,12 @@ function createShootingStar() {
   lastShootingStarTime = now;
 
   const fixedZ = 4;
-  const startX = (Math.random() * 20 - 10) + horizontalOffset; // wider X range
+  const startX = (Math.random() * 20 - 10) + horizontalOffset;
   const startY = 35;
   const midX = startX + (Math.random() * 8 - 4);
   const playerY = player?.position?.y || -5;
   const endX = startX + (Math.random() * 10 - 5);
-  const endY = -20; // Behind player
+  const endY = -20;
 
   const curve = new THREE.QuadraticBezierCurve3(
     new THREE.Vector3(startX, startY, fixedZ),
@@ -571,13 +569,13 @@ function heartExplosion(heartObject) {
 
   heartObject.traverse(child => {
     if (child.isMesh) {
-      for (let i = 0; i < 2; i++) { // Double the fragments
+      for (let i = 0; i < 2; i++) {
         const clone = child.clone();
         clone.material = child.material.clone();
         clone.position.copy(child.getWorldPosition(new THREE.Vector3()));
         clone.material.transparent = true;
         clone.material.opacity = 1;
-        clone.scale.setScalar(1.5); // Start slightly larger for a pop effect
+        clone.scale.setScalar(1.5);
         uiScene.add(clone);
 
         const velocity = new THREE.Vector3(
@@ -678,11 +676,9 @@ function createSphericalMoon() {
     const flagGeom = new THREE.PlaneGeometry(1, 0.6);
     const flag = new THREE.Mesh(flagGeom, flagMat);
 
-    // Attach flag beside pole
     flag.position.set(0.53, poleHeight - 0.3, 0);
     flag.rotation.y = 0;
 
-    // 🌬️ Mark as waving flag
     flag.userData.isWavingFlag = true;
     flag.userData.waveStartTime = Math.random() * Math.PI * 2;
     wavingFlags.push(flag);
@@ -690,9 +686,8 @@ function createSphericalMoon() {
     flagGroup.add(flag);
     flagGroup.scale.setScalar(0.6);
 
-    // 🎯 Position on visible front side of moon
-    const theta = Math.random() * Math.PI; // front hemisphere
-    const phi = Math.PI / 2 + (Math.random() - 0.5) * 0.4; // equator-ish
+    const theta = Math.random() * Math.PI;
+    const phi = Math.PI / 2 + (Math.random() - 0.5) * 0.4;
 
     const normal = new THREE.Vector3(
       Math.sin(phi) * Math.cos(theta),
@@ -792,10 +787,10 @@ async function startGame() {
   const light = new THREE.AmbientLight(0xffffff, 1.5);
   scene.add(light);
 
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9); // Reduced intensity from 1.5 to 0.8
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9); 
   directionalLight.position.set(0, 10, 10);
   directionalLight.castShadow = true;
-  directionalLight.shadow.mapSize.width = 1024; // Reduced resolution for softer edges
+  directionalLight.shadow.mapSize.width = 1024;
   directionalLight.shadow.mapSize.height = 1024;
   directionalLight.shadow.camera.near = 0.5;
   directionalLight.shadow.camera.far = 50;
@@ -803,10 +798,9 @@ async function startGame() {
   directionalLight.shadow.camera.right = 30;
   directionalLight.shadow.camera.top = 30;
   directionalLight.shadow.camera.bottom = -30;
-  // Add these properties for softer, more transparent shadows
-  directionalLight.shadow.bias = -0.001; // Helps reduce shadow artifacts
-  directionalLight.shadow.radius = 2; // Creates softer shadow edges
-  directionalLight.shadow.darkness = 0.3; // Makes shadows more transparent (0-1, where 1 is darkest)
+  directionalLight.shadow.bias = -0.001; 
+  directionalLight.shadow.radius = 2;
+  directionalLight.shadow.darkness = 0.3;
 
   scene.add(directionalLight);
 
@@ -924,7 +918,7 @@ async function startGame() {
 
     if (moon) {
       const axis = moon.userData.rotationAxis;
-      moon.rotateOnAxis(axis, 0.005); // adjust speed if needed
+      moon.rotateOnAxis(axis, 0.005);
     }
 
     if (!gameOver && asteroidBelt) {
@@ -1340,7 +1334,7 @@ function resetAliens() {
   else if (enemyPhase === 2) { rows = 2; cols = 3; } 
   else if (enemyPhase === 3) { rows = 3; cols = 3; } 
   else{rows = 4; cols = 4; }
-  //else if (enemyPhase === 4) { rows = 4; cols = 4; }  TODO demasiado lag, otimizar depois
+  //else if (enemyPhase === 4) { rows = 4; cols = 4; }  TODO Rrip fps, otimizar depois
   //else { rows = 5; cols = 5; }
   
   const baseYOffset = 7;
@@ -1387,7 +1381,7 @@ function resetAliens() {
       const finalX = (c - cols / 2) * alienSpacing + horizontalOffset;
       const finalY = baseYOffset - (r * alienSpacing * 0.8);
       alienMesh.position.set(
-        Math.random() < 0.5 ? -30 : 30, // spawn from left or right
+        Math.random() < 0.5 ? -30 : 30,
         finalY,
         0
       );
