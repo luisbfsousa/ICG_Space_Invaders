@@ -49,6 +49,12 @@ let gameOver = false;
 let heartGroup;
 let uiScene, uiCamera;
 
+const wanderingPlanets = [];
+let lastPlanetSpawnTime = 0;
+const planetSpawnInterval = 1000;
+const planetFrustum = new THREE.Frustum();
+const planetCamMatrix = new THREE.Matrix4();
+
 const sounds = {
   shoot: new Audio('sounds/shoot.mp3'),
   impact: new Audio('sounds/impact.mp3'),
@@ -280,6 +286,80 @@ function toScreenPosition(obj, camera) {
 
   return { x: vector.x, y: vector.y };
 }
+
+function createColoredPlanet(size = 1, color = 0xaaaaaa, hasRing = false) {
+  const geometry = new THREE.SphereGeometry(size, 16, 16);
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.6,
+    metalness: 0.2,
+    emissive: color,
+    emissiveIntensity: 0.05
+  });
+
+  const planet = new THREE.Mesh(geometry, material);
+  const group = new THREE.Group();
+  group.add(planet);
+
+  if (hasRing) {
+    const ringInner = size * 1.2;
+    const ringOuter = size * 1.8;
+    const ringGeometry = new THREE.RingGeometry(ringInner, ringOuter, 64);
+    const ringMaterial = new THREE.MeshStandardMaterial({
+      color: 0xcccccc,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.5
+    });
+
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.rotation.x = Math.PI / 2.5;
+    ring.rotation.z = Math.random() * Math.PI;
+    ring.position.y = 0; // align with planet
+
+    group.add(ring);
+    group.userData.hasRing = true;
+  }
+
+  return group;
+}
+
+function spawnRandomPlanet() {
+  if (wanderingPlanets.length >= 5) return;
+
+  const size = Math.random() * 2 + 1;
+  const colors = [0x777777, 0x554433, 0x669999, 0x888888, 0x333366];
+  const color = colors[Math.floor(Math.random() * colors.length)];
+  const hasRing = Math.random() < 0.3;
+
+  const planet = createColoredPlanet(size, color, hasRing);
+
+  let x = (Math.random() - 0.5) * 100;
+  let y, z;
+
+  if (currentLevel === 1) {
+    // Z-based background
+    y = 20;
+    z = -30 - Math.random() * 20;
+  } else {
+    // Y-based deep sky background
+    y = 60 + Math.random() * 20;
+    z = -50 - Math.random() * 20;
+  }
+
+  planet.position.set(x, y, z);
+
+  const direction = new THREE.Vector3(
+    (Math.random() - 0.5),
+    0,
+    (Math.random() - 0.5)
+  ).normalize();
+
+  planet.userData.velocity = direction.multiplyScalar(0.15 + Math.random() * 0.05);
+  scene.add(planet);
+  wanderingPlanets.push(planet);
+}
+
 
 //function updateLivesPosition() {
 //  const livesEl = document.getElementById('livesContainer');
@@ -565,8 +645,8 @@ async function startGame() {
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   setCameraView();
 
-  //const axesHelper = new THREE.AxesHelper(5);
-  //scene.add(axesHelper);
+  const axesHelper = new THREE.AxesHelper(5);
+  scene.add(axesHelper);
 
   const moon = createSphericalMoon();
   scene.add(moon);
@@ -677,6 +757,34 @@ async function startGame() {
     updateParticles();
     updateShootingStars();
     createShootingStar();
+
+    if (Date.now() - lastPlanetSpawnTime > planetSpawnInterval) {
+      spawnRandomPlanet();
+      lastPlanetSpawnTime = Date.now();
+    }
+
+
+    planetCamMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    planetFrustum.setFromProjectionMatrix(planetCamMatrix);
+
+    for (let i = wanderingPlanets.length - 1; i >= 0; i--) {
+      const planet = wanderingPlanets[i];
+      planet.position.add(planet.userData.velocity);
+
+      planet.rotation.y += 0.001;
+      if (planet.userData.hasRing) {
+        planet.rotation.z += 0.0005;
+      }
+
+      if (
+        Math.abs(planet.position.x) > 120 ||
+        Math.abs(planet.position.z) > 120
+      ) {
+        scene.remove(planet);
+        wanderingPlanets.splice(i, 1);
+      }
+    }
+
 
     if (moon) {
       const axis = moon.userData.rotationAxis;
