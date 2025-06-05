@@ -1750,4 +1750,3 @@ document.getElementById("changeCameraButton").addEventListener("click", (e) => {
   currentLevel = (currentLevel % 3) + 1;
   setCameraView();
 });
-
