@@ -918,7 +918,7 @@ async function startGame() {
 
     if (moon) {
       const axis = moon.userData.rotationAxis;
-      moon.rotateOnAxis(axis, 0.005);
+      moon.rotateOnAxis(axis, 0.0009);
     }
 
     if (!gameOver && asteroidBelt) {
